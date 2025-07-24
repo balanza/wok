@@ -1,5 +1,11 @@
-# Wok
-A tool for organizing and managing projects.
+<p align="center">
+  <img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/6e44dedf-79b0-4119-9d5a-481ccc7512c5" />
+</p>
+<h1 align="center">Wok</h1>
+<h3 align="center">A tool for organising and managing projects.</h3>
+
+
+
 
 ## Usage
 
