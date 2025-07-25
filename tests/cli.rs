@@ -1,4 +1,5 @@
 use assert_cmd::prelude::*;
+use assert_fs::prelude::*;
 use predicates::prelude::*;
 use std::process::Command;
 
@@ -9,4 +10,51 @@ fn test_cli_help() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Usage: wok <COMMAND>"));
+}
+
+#[test]
+fn test_cli_add_existing_repo() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    temp_dir.child("workspace").create_dir_all().unwrap();
+    let workspace = temp_dir.path().join("workspace");
+
+    let mut cmd = Command::cargo_bin("wok").unwrap();
+
+    // Forward SSH agent
+    if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+        cmd.env("SSH_AUTH_SOCK", sock);
+    }
+
+    cmd.env("WOK_SPACE", workspace)
+        .arg("add")
+        .arg("git@github.com:balanza/wok.git")
+        .assert()
+        .success();
+
+    let repo_path = temp_dir
+        .path()
+        .join("workspace")
+        .join("balanza")
+        .join("wok");
+    assert!(temp_dir.child(repo_path).exists());
+}
+
+#[test]
+fn test_cli_add_non_existing_repo() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    temp_dir.child("workspace").create_dir_all().unwrap();
+    let workspace = temp_dir.path().join("workspace");
+
+    let mut cmd = Command::cargo_bin("wok").unwrap();
+
+    // Forward SSH agent
+    if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+        cmd.env("SSH_AUTH_SOCK", sock);
+    }
+
+    cmd.env("WOK_SPACE", workspace)
+        .arg("add")
+        .arg("git@github.com:balanza/unknown.git")
+        .assert()
+        .failure();
 }
