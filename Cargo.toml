@@ -9,6 +9,7 @@ edition = "2021"
 clap = { version = "4.0", features = ["derive"] }
 dirs = "6.0.0"
 git-url-parse = "0.4.5"
+indicatif = "0.18.0"
 url = "2.5.4"
 
 [dev-dependencies]

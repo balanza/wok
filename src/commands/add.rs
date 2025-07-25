@@ -1,27 +1,38 @@
 use git_url_parse::GitUrl;
+use std::process::{Command, Stdio};
+use wok::lib::spinner;
 
 pub fn handle(workspace: &str, repo_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some((org_name, repo_name)) = parse_repo_url(repo_url) {
         let destination = format!("{}/{}/{}", workspace, org_name, repo_name);
-        println!("Cloning into {}", destination);
 
-        match std::process::Command::new("git")
+        let spinner = spinner::Spinner::new(format!("Cloning into {}", destination));
+
+        match Command::new("git")
             .arg("clone")
             .arg(repo_url)
             .arg(&destination)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
         {
             Ok(status) if status.success() => {
-                println!("Repository cloned successfully into: {}", destination);
+                spinner.success(format!("Project created successfully at: {}", destination));
                 Ok(())
             }
-            Ok(status) => Err(format!(
-                "Failed to clone repository. Command exited with status: {}",
-                status
-            )
-            .into()),
+            Ok(status) => {
+                spinner.error(format!("Project creation failed"));
+                Err(format!(
+                    "Failed to clone repository. Command exited with status: {}",
+                    status
+                )
+                .into())
+            }
 
-            Err(e) => Err(format!("Failed to execute git clone command: {}", e).into()),
+            Err(e) => {
+                spinner.error(format!("Project creation failed"));
+                Err(format!("Failed to execute git clone command: {}", e).into())
+            }
         }
     } else {
         Err(format!("Invalid repository URL: {}", repo_url).into())
