@@ -13,7 +13,7 @@ fn test_cli_help() {
 }
 
 #[test]
-fn test_cli_add_existing_repo() {
+fn test_cli_add_existing_repo_ssh() {
     let temp_dir = assert_fs::TempDir::new().unwrap();
     temp_dir.child("workspace").create_dir_all().unwrap();
     let workspace = temp_dir.path().join("workspace");
@@ -27,15 +27,42 @@ fn test_cli_add_existing_repo() {
 
     cmd.env("WOK_SPACE", workspace)
         .arg("add")
-        .arg("git@github.com:balanza/wok.git")
+        .arg("git@github.com:dottorblaster/stocazzo.git")
         .assert()
         .success();
 
     let repo_path = temp_dir
         .path()
         .join("workspace")
-        .join("balanza")
-        .join("wok");
+        .join("dottorblaster")
+        .join("stocazzo");
+    assert!(temp_dir.child(repo_path).exists());
+}
+
+#[test]
+fn test_cli_add_existing_repo_https() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    temp_dir.child("workspace").create_dir_all().unwrap();
+    let workspace = temp_dir.path().join("workspace");
+
+    let mut cmd = Command::cargo_bin("wok").unwrap();
+
+    // Forward SSH agent
+    if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+        cmd.env("SSH_AUTH_SOCK", sock);
+    }
+
+    cmd.env("WOK_SPACE", workspace)
+        .arg("add")
+        .arg("https://github.com/dottorblaster/stocazzo.git")
+        .assert()
+        .success();
+
+    let repo_path = temp_dir
+        .path()
+        .join("workspace")
+        .join("dottorblaster")
+        .join("stocazzo");
     assert!(temp_dir.child(repo_path).exists());
 }
 
