@@ -24,6 +24,7 @@ pub enum Commands {
     },
 
     /// List all repositories in the workspace, grouped by organization
+    #[command(visible_alias = "ls")]
     List {
         /// Filter by comma-separated list of organizations (e.g. --org acme,ymca)
         #[arg(long, value_delimiter = ',')]
