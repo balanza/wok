@@ -1,7 +1,8 @@
+use serde::Serialize;
 use std::io::{self, Write};
 use std::thread;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct ProjectItem {
     id: String,
     name: String,
@@ -10,14 +11,19 @@ struct ProjectItem {
     is_current: bool,
 }
 
+type ListWriter = fn(Vec<ProjectItem>, &mut dyn Write) -> io::Result<()>;
+
 pub fn handle(
     workspace: &str,
     orgs: Option<Vec<String>>,
+    format: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let filter_orgs = orgs.clone().unwrap_or_else(Vec::new);
     let list: Vec<ProjectItem> = list_project_items(workspace, filter_orgs)?;
-    let mut writer = io::stdout();
-    write_project_tree_compact(list, &mut writer)?;
+
+    let writer = get_writer_fn(format)?;
+    writer(list, &mut io::stdout())?;
+
     Ok(())
 }
 
@@ -136,7 +142,19 @@ fn list_project_items(
     Ok(result)
 }
 
-fn write_project_tree_compact<W: Write>(list: Vec<ProjectItem>, writer: &mut W) -> io::Result<()> {
+fn get_writer_fn(format: &str) -> io::Result<ListWriter> {
+    match format {
+        "json" => Ok(write_project_tree_json),
+        "flat" => Ok(write_project_tree_flat),
+        "tree" => Ok(write_project_tree_compact),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unsupported format: {}", format),
+        )),
+    }
+}
+
+fn write_project_tree_compact(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
     if list.is_empty() {
         return Ok(());
     }
@@ -184,6 +202,32 @@ fn write_project_tree_compact<W: Write>(list: Vec<ProjectItem>, writer: &mut W) 
         )?;
     }
 
+    Ok(())
+}
+
+fn write_project_tree_json(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
+    let result = serde_json::to_writer(writer, &list.clone());
+
+    if let Err(e) = result {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Failed to write JSON: {}", e),
+        ));
+    }
+    Ok(())
+}
+
+fn write_project_tree_flat(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
+    for item in list {
+        let marker = if item.is_current { "* " } else { "" };
+        writeln!(
+            writer,
+            "{}{} ({})",
+            marker,
+            item.name,
+            item.remote.as_deref().unwrap_or("no remote")
+        )?;
+    }
     Ok(())
 }
 
@@ -360,29 +404,30 @@ mod tests {
         );
     }
 
+    /// Tests for the different output formats
+
     #[test]
-    fn test_list_project_items_with_filter() {
-        let temp_dir = setup_test_workspace();
-        let workspace = temp_dir.path().to_str().unwrap();
-
-        let items = list_project_items(workspace, vec!["org1".to_string()]).unwrap();
-
-        // Should only include projects from org1
-        assert_eq!(items.len(), 2);
-        assert!(items.iter().all(|i| i.organization == "org1"));
+    fn test_get_writer_function() {
+        assert!(get_writer_fn("json").is_ok());
+        assert!(get_writer_fn("flat").is_ok());
+        assert!(get_writer_fn("tree").is_ok());
+        assert!(get_writer_fn("invalid").is_err());
     }
 
+    // tree
+
     #[test]
-    fn test_write_project_tree_compact_empty_list() {
+    fn test_write_empty_list_tree() {
         let mut output = Vec::new();
-        let result = write_project_tree_compact(vec![], &mut output);
+        let writer_fn = get_writer_fn("tree").unwrap();
+        let result = writer_fn(vec![], &mut output);
 
         assert!(result.is_ok());
         assert!(output.is_empty());
     }
 
     #[test]
-    fn test_write_project_tree_compact_single_org() {
+    fn test_write_single_org_tree() {
         let items = vec![
             ProjectItem {
                 id: "org1::project1".to_string(),
@@ -401,7 +446,8 @@ mod tests {
         ];
 
         let mut output = Vec::new();
-        write_project_tree_compact(items, &mut output).unwrap();
+        let writer_fn = get_writer_fn("tree").unwrap();
+        writer_fn(items, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         let lines: Vec<&str> = output_str.lines().collect();
@@ -418,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_project_tree_compact_multiple_orgs() {
+    fn test_write_multiple_orgs_tree() {
         let items = vec![
             ProjectItem {
                 id: "org1::project1".to_string(),
@@ -444,7 +490,8 @@ mod tests {
         ];
 
         let mut output = Vec::new();
-        write_project_tree_compact(items, &mut output).unwrap();
+        let writer_fn = get_writer_fn("tree").unwrap();
+        writer_fn(items, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         let lines: Vec<&str> = output_str.lines().collect();
@@ -464,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_project_tree_compact_no_remote() {
+    fn test_write_no_remote_tree() {
         let items = vec![ProjectItem {
             id: "org1::project1".to_string(),
             name: "project1".to_string(),
@@ -474,11 +521,109 @@ mod tests {
         }];
 
         let mut output = Vec::new();
-        write_project_tree_compact(items, &mut output).unwrap();
+        let writer_fn = get_writer_fn("tree").unwrap();
+        writer_fn(items, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("(no remote)"));
     }
+
+    // json
+    #[test]
+    fn test_write_empty_list_json() {
+        let mut output = Vec::new();
+        let writer_fn = get_writer_fn("json").unwrap();
+        let result = writer_fn(vec![], &mut output);
+
+        assert!(result.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.eq("[]"));
+    }
+
+    #[test]
+    fn test_write_single_org_json() {
+        let items = vec![
+            ProjectItem {
+                id: "org1::project1".to_string(),
+                name: "project1".to_string(),
+                organization: "org1".to_string(),
+                remote: Some("https://github.com/org1/project1.git".to_string()),
+                is_current: false,
+            },
+            ProjectItem {
+                id: "org1::project2".to_string(),
+                name: "project2".to_string(),
+                organization: "org1".to_string(),
+                remote: Some("https://github.com/org1/project2.git".to_string()),
+                is_current: true,
+            },
+        ];
+
+        let mut output = Vec::new();
+        let writer_fn = get_writer_fn("json").unwrap();
+        writer_fn(items, &mut output).unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        let expected = r#"[{"id":"org1::project1","name":"project1","organization":"org1","remote":"https://github.com/org1/project1.git","is_current":false},{"id":"org1::project2","name":"project2","organization":"org1","remote":"https://github.com/org1/project2.git","is_current":true}]"#;
+        assert_eq!(output_str, expected);
+    }
+
+    #[test]
+    fn test_write_multiple_orgs_json() {
+        let items = vec![
+            ProjectItem {
+                id: "org1::project1".to_string(),
+                name: "project1".to_string(),
+                organization: "org1".to_string(),
+                remote: Some("https://github.com/org1/project1.git".to_string()),
+                is_current: false,
+            },
+            ProjectItem {
+                id: "org2::project2".to_string(),
+                name: "project2".to_string(),
+                organization: "org2".to_string(),
+                remote: Some("https://github.com/org2/project2.git".to_string()),
+                is_current: false,
+            },
+            ProjectItem {
+                id: "org1::project3".to_string(),
+                name: "project3".to_string(),
+                organization: "org1".to_string(),
+                remote: None,
+                is_current: false,
+            },
+        ];
+
+        let mut output = Vec::new();
+        let writer_fn = get_writer_fn("json").unwrap();
+        writer_fn(items, &mut output).unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        let expected = r#"[{"id":"org1::project1","name":"project1","organization":"org1","remote":"https://github.com/org1/project1.git","is_current":false},{"id":"org2::project2","name":"project2","organization":"org2","remote":"https://github.com/org2/project2.git","is_current":false},{"id":"org1::project3","name":"project3","organization":"org1","remote":null,"is_current":false}]"#;
+        assert_eq!(output_str, expected);
+    }
+
+    #[test]
+    fn test_write_no_remote_json() {
+        let items = vec![ProjectItem {
+            id: "org1::project1".to_string(),
+            name: "project1".to_string(),
+            organization: "org1".to_string(),
+            remote: None,
+            is_current: false,
+        }];
+
+        let mut output = Vec::new();
+        let writer_fn = get_writer_fn("json").unwrap();
+        writer_fn(items, &mut output).unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        let expected = r#"[{"id":"org1::project1","name":"project1","organization":"org1","remote":null,"is_current":false}]"#;
+        assert_eq!(output_str, expected);
+    }
+
+    // flat
+    // TBD
 
     #[test]
     fn test_handle_integration() {

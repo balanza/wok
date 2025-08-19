@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     return match cli.command {
         cli::Commands::Add { repo_url } => commands::add::handle(&workspace, &repo_url),
-        cli::Commands::List { org } => commands::list::handle(&workspace, org),
+        cli::Commands::List { org, format } => commands::list::handle(&workspace, org, &format),
         cli::Commands::Ff { org } => commands::ff::handle(&workspace, org),
         cli::Commands::Go { search } => commands::go::handle(&workspace, &search),
         cli::Commands::Export {} => commands::export::handle(&workspace),

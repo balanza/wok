@@ -29,6 +29,9 @@ pub enum Commands {
         /// Filter by comma-separated list of organizations (e.g. --org acme,ymca)
         #[arg(long, value_delimiter = ',')]
         org: Option<Vec<String>>,
+        /// Select the output format: json, flat, or tree
+        #[arg(long, default_value = "tree", short = 'F')]
+        format: String,
     },
 
     /// Fast-forward all main branches for all repositories
