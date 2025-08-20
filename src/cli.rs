@@ -56,4 +56,14 @@ pub enum Commands {
         #[arg()]
         input: String,
     },
+
+    /// Setup `wok` command to integrate with your shell
+    Setup {
+        /// Shell type (e.g. bash, zsh, fish)
+        #[arg(short, long, required = false)]
+        shell: Option<String>,
+        /// Manual mode (do not run the command, just print the setup script)
+        #[arg(short, long, default_value_t = false)]
+        manual: bool,
+    },
 }

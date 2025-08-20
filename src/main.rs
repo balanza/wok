@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::Commands::Go { search } => commands::go::handle(&workspace, &search),
         cli::Commands::Export {} => commands::export::handle(&workspace),
         cli::Commands::Import { input } => commands::import::handle(&workspace, &input),
+        cli::Commands::Setup { shell, manual } => commands::setup::handle(&shell, manual),
     };
 }
 

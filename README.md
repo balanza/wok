@@ -14,6 +14,10 @@
 # default: ~/Workspace
 echo $WOK_SPACE
 
+# setup on the current shell (first use only)
+# the current shell is detected automatically
+wok setup
+
 # clone the repo into $WOK_SPACE/acme/foo
 wok add git@github.com:acme/foo.git
 

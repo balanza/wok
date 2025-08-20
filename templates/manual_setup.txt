@@ -1,0 +1,38 @@
+Follow these instructions to setup `wok` CLI application on your current shell environment.
+This is important to have seamlessly integration with the shell capabilities such as autocomplete and directory switching.
+
+This guide works for `__SHELL_TYPE__` shell environments.
+
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+# 1. Copy the following script to your __WOKRC_NAME__ file
+#    (__WOKRC_PATH__)
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+
+
+__WOKRC_SCRIPT__
+
+
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+# 2. Try the setup in the current shell session
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+
+
+$> source __WOKRC_PATH__
+
+
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+# 3. To make the setup persistent across shell sessions,
+#    append the following to your __SHELL_RC_FILE__
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+
+
+[ -f __WOKRC_PATH__ ] && source __WOKRC_PATH__
+
+
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+# 4. Open another shell session or restart the current one with
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+
+
+$> source __SHELL_RC_FILE__
+
