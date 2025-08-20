@@ -32,20 +32,41 @@ impl FuzzySearcher {
 
         // Sort by score (higher is better)
         matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        matches
+
+        self.decide_match(&matches)
+    }
+
+    fn decide_match(&self, ordered_matches: &Vec<FuzzyMatch>) -> Vec<FuzzyMatch> {
+        if ordered_matches.len() <= 1 {
+            return ordered_matches.clone();
+        }
+
+        // If the first match has a score of 1.0, just return it
+        if let Some(first_match) = ordered_matches.first() {
+            if first_match.score >= 0.99 {
+                return vec![first_match.clone()];
+            }
+        }
+
+        // if the first match has a score > 0.9 and it's 20% more than the second match,
+        // we can consider it a strong match
+        if let Some(first_match) = ordered_matches.first() {
+            if let Some(second_match) = ordered_matches.get(1) {
+                if first_match.score > 0.9 && first_match.score >= second_match.score * 1.2 {
+                    return vec![first_match.clone()];
+                }
+            }
+        }
+
+        ordered_matches.clone()
     }
 
     fn fuzzy_match(&self, query: &str, candidate: &str) -> Option<f64> {
         let query_lower = query.to_lowercase();
         let candidate_lower = candidate.to_lowercase();
 
-        println!(
-            "Fuzzy matching '{}' against '{}'",
-            query_lower, candidate_lower
-        );
         // First check: exact match
         if query_lower == candidate_lower {
-            println!("Exact match found: {}", candidate_lower);
             return Some(1.0); // Exact match gets the highest score
         }
 
@@ -53,26 +74,14 @@ impl FuzzySearcher {
         if self.is_subsequence(&query_lower, &candidate_lower) {
             let jaro_score = self.jaro_similarity(&query_lower, &candidate_lower);
             // Direct subsequence match gets a high base score
-            println!(
-                "Subsequence match found: {} with Jaro score: {}",
-                candidate_lower, jaro_score
-            );
             return Some(jaro_score);
         }
 
         // Third check: Jaro similarity for "close" matches
         let jaro_score = self.jaro_similarity(&query_lower, &candidate_lower);
         if jaro_score >= self.jaro_threshold {
-            println!(
-                "Jaro similarity match found: {} with score: {}",
-                candidate_lower, jaro_score
-            );
             Some(jaro_score)
         } else {
-            println!(
-                "No match found for '{}' against '{}'. Jaro score: {}",
-                query_lower, candidate_lower, jaro_score
-            );
             None
         }
     }

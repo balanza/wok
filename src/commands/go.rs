@@ -17,8 +17,9 @@ pub fn handle(workspace: &str, search: &str) -> Result<(), Box<dyn std::error::E
 
     if filtered_list.len() > 1 {
         let write_fn = get_writer_fn("flat")?;
+        println!("Multiple projects found. Please refine your search or use a different command to select a project.");
         write_fn(filtered_list, &mut std::io::stdout())?;
-        return Err(Box::from("Multiple projects found. Please refine your search or use a different command to select a project."));
+        return Ok(());
     }
 
     println!("{}", to_goto(workspace, filtered_list[0].clone()));
