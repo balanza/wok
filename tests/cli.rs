@@ -9,7 +9,7 @@ fn test_cli_help() {
     cmd.arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Usage: wok <COMMAND>"));
+        .stdout(predicate::str::contains("Usage: wok [OPTIONS] [PROJECT]"));
 }
 
 #[test]
@@ -26,7 +26,6 @@ fn test_cli_add_existing_repo_ssh() {
     }
 
     cmd.env("WOK_SPACE", workspace)
-        .arg("add")
         .arg("git@github.com:dottorblaster/stocazzo.git")
         .assert()
         .success();
@@ -53,7 +52,6 @@ fn test_cli_add_existing_repo_https() {
     }
 
     cmd.env("WOK_SPACE", workspace)
-        .arg("add")
         .arg("https://github.com/dottorblaster/stocazzo.git")
         .assert()
         .success();
@@ -80,7 +78,6 @@ fn test_cli_add_non_existing_repo() {
     }
 
     cmd.env("WOK_SPACE", workspace)
-        .arg("add")
         .arg("git@github.com:balanza/unknown.git")
         .assert()
         .failure();
