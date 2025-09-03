@@ -186,12 +186,10 @@ impl WokCli {
     /// Check if a string looks like a URL
     fn is_url(s: &str) -> bool {
         // Check for common Git URL patterns
-        s.starts_with("git@") ||
-        s.starts_with("https://") ||
-        s.starts_with("http://") ||
-        s.starts_with("ssh://") ||
-        // GitHub shorthand (user/repo)
-        (s.contains('/') && !s.contains(' ') && s.chars().filter(|&c| c == '/').count() >= 1)
+        s.starts_with("git@")
+            || s.starts_with("https://")
+            || s.starts_with("http://")
+            || s.starts_with("ssh://")
     }
 }
 
@@ -203,9 +201,6 @@ mod tests {
     fn test_url_detection() {
         assert!(WokCli::is_url("git@github.com:user/repo.git"));
         assert!(WokCli::is_url("https://github.com/user/repo"));
-        assert!(WokCli::is_url("user/repo"));
-        assert!(!WokCli::is_url("project-name"));
-        assert!(!WokCli::is_url("org"));
     }
 
     macro_rules! cli_test {
