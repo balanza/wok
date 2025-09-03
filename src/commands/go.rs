@@ -1,3 +1,4 @@
+use std::os::unix::io::AsRawFd;
 use wok::lib::constants::GOTO_MARKER;
 use wok::lib::fd::write_to_fd;
 use wok::lib::fuzzy::FuzzySearcher;
@@ -32,10 +33,17 @@ pub fn handle(workspace: &str, search: &str) -> Result<(), Box<dyn std::error::E
 
     // Write to fd 3 for the shell to pick up
     write_to_fd(3, &goto_dest)?;
+
     // Also print to stdout for use the output in other contexts
-    println!("{}", &dest);
+    if is_tty() {
+        println!("{}", &dest);
+    }
 
     Ok(())
+}
+
+fn is_tty() -> bool {
+    unsafe { libc::isatty(std::io::stdout().as_raw_fd()) != 0 }
 }
 
 fn fuzzy_search(list: &Vec<ProjectItem>, search: &str) -> Vec<ProjectItem> {
