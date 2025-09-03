@@ -1,25 +1,23 @@
 #!/bin/zsh
 
 wok() {
-        local output
-        output=$("__WOK_BINARY_PATH__" "$@" 2>&1)
-        local retcode=$?
-        if echo "$output" | grep --color=auto --exclude-dir={.bzr,CVS,.git,.hg,.svn,.idea,.tox,.venv,venv} -q '^__WOK_GOTO_MARKER__'; then
-                local line
-                line=$(echo "$output" | grep '^__WOK_GOTO_MARKER__' | head -n 1)
-                local target_dir=${line#__WOK_GOTO_MARKER__}
-                if [ -d "$target_dir" ]; then
-                        cd "$target_dir" || {
-                                echo "wok: failed to change directory to $target_dir" >&2
-                                return 1
-                        }
-                else
-                        echo "wok: directory $target_dir does not exist" >&2
-                        return 1
-                fi
-                echo "$output" | grep --color=auto --exclude-dir={.bzr,CVS,.git,.hg,.svn,.idea,.tox,.venv,venv} -v '^__WOK_GOTO_MARKER__'
-        else
-                echo "$output"
-        fi
-        return $retcode
+  local fd3=$(mktemp --suffix=_wok_fd3_$$)
+  local goto_dir
+
+   "__WOK_BINARY_PATH__" "$@" 3> "$fd3"
+
+   while IFS= read -r line; do
+      # Send directory change commands to main shell
+      if [[ "$line" =~ ^__WOK_GOTO_MARKER__(.*)$ ]]; then
+        goto_dir="${match[1]}"
+      fi
+    done < "$fd3"
+
+    rm -f "$fd3" || true
+
+    if [[ -n "$goto_dir" ]]; then
+      cd "$goto_dir" || return $?
+    fi
+
+    return 0
 }

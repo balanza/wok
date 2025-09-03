@@ -1,4 +1,5 @@
 use wok::lib::constants::GOTO_MARKER;
+use wok::lib::fd::write_to_fd;
 use wok::lib::fuzzy::FuzzySearcher;
 use wok::lib::list_writer::get_writer_fn;
 use wok::lib::projects::{list_project_items, ProjectItem};
@@ -22,7 +23,17 @@ pub fn handle(workspace: &str, search: &str) -> Result<(), Box<dyn std::error::E
         return Ok(());
     }
 
-    println!("{}", to_goto(workspace, filtered_list[0].clone()));
+    let dest = format!(
+        "{}/{}/{}",
+        workspace, filtered_list[0].organization, filtered_list[0].name
+    );
+
+    let goto_dest = format!("{}{}", GOTO_MARKER, &dest);
+
+    // Write to fd 3 for the shell to pick up
+    write_to_fd(3, &goto_dest)?;
+    // Also print to stdout for use the output in other contexts
+    println!("{}", &dest);
 
     Ok(())
 }
@@ -45,16 +56,9 @@ fn fuzzy_search(list: &Vec<ProjectItem>, search: &str) -> Vec<ProjectItem> {
         .collect()
 }
 
-fn to_goto(workspace: &str, item: ProjectItem) -> String {
-    format!(
-        "{}{}/{}/{}",
-        GOTO_MARKER, workspace, item.organization, item.name
-    )
-}
-
 mod tests {
     #[allow(unused_imports)]
-    use super::{fuzzy_search, to_goto, ProjectItem};
+    use super::{fuzzy_search, ProjectItem};
 
     // somehow this function is marked as dead code, but it is used in the tests
     #[allow(dead_code)]
