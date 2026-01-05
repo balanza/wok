@@ -1,8 +1,7 @@
 use std::os::unix::io::AsRawFd;
-use wok::lib::constants::GOTO_MARKER;
+use wok::lib::constants::{GOTO_MARKER, MULTIPLE_MATCHES_MARKER};
 use wok::lib::fd::write_to_fd;
 use wok::lib::fuzzy::FuzzySearcher;
-use wok::lib::list_writer::get_writer_fn;
 use wok::lib::projects::{list_project_items, ProjectItem};
 
 pub fn handle(workspace: &str, search: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -18,9 +17,16 @@ pub fn handle(workspace: &str, search: &str) -> Result<(), Box<dyn std::error::E
     }
 
     if filtered_list.len() > 1 {
-        let write_fn = get_writer_fn("flat")?;
-        println!("Multiple projects found. Please refine your search or use a different command to select a project.");
-        write_fn(filtered_list, &mut std::io::stdout())?;
+        // Write marker to fd 3 to signal multiple matches to the shell wrapper
+        // Format: MARKER followed by newline-separated list of matches
+        let matches: Vec<String> = filtered_list
+            .iter()
+            .map(|item| format!("{}/{}", item.organization, item.name))
+            .collect();
+        let multiple_matches_data = format!("{}\n{}", MULTIPLE_MATCHES_MARKER, matches.join("\n"));
+        write_to_fd(3, &multiple_matches_data)?;
+
+        // Let the shell wrapper handle displaying the menu
         return Ok(());
     }
 

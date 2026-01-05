@@ -1,7 +1,7 @@
 use std::env;
 use std::io::Write;
 use std::process::{Command, Stdio};
-use wok::lib::constants::GOTO_MARKER;
+use wok::lib::constants::{GOTO_MARKER, MULTIPLE_MATCHES_MARKER};
 
 enum SupportedShells {
     Bash,
@@ -20,6 +20,7 @@ impl ToString for SupportedShells {
 struct WokrcScriptParams {
     binary_path: String,
     goto_marker: String,
+    multiple_matches_marker: String,
 }
 
 pub fn handle(shell: &Option<String>, manual: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -30,9 +31,11 @@ pub fn handle(shell: &Option<String>, manual: bool) -> Result<(), Box<dyn std::e
 
     let binary_path = env::current_exe()?.to_string_lossy().to_string();
     let goto_marker = GOTO_MARKER.to_string();
+    let multiple_matches_marker = MULTIPLE_MATCHES_MARKER.to_string();
     let params = WokrcScriptParams {
         binary_path,
         goto_marker,
+        multiple_matches_marker,
     };
 
     let wokrc_script = compile_wokrc_script(&shell_type, params)?;
@@ -101,6 +104,10 @@ fn compile_wokrc_script(
             (
                 "WOK_GOTO_MARKER".to_string(),
                 params.goto_marker.to_string(),
+            ),
+            (
+                "WOK_MULTIPLE_MATCHES_MARKER".to_string(),
+                params.multiple_matches_marker.to_string(),
             ),
         ]
         .iter()
