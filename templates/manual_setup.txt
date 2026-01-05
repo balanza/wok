@@ -13,24 +13,34 @@ __WOKRC_SCRIPT__
 
 
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
-# 2. Try the setup in the current shell session
+# 2. Copy the following autocomplete script to __AUTOCOMPLETE_PATH__
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+
+
+__AUTOCOMPLETE_SCRIPT__
+
+
+-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
+# 3. Try the setup in the current shell session
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
 
 
 $> source __WOKRC_PATH__
+__AUTOCOMPLETE_SOURCE_CMD__
 
 
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
-# 3. To make the setup persistent across shell sessions,
+# 4. To make the setup persistent across shell sessions,
 #    append the following to your __SHELL_RC_FILE__
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
 
 
 [ -f __WOKRC_PATH__ ] && source __WOKRC_PATH__
+__AUTOCOMPLETE_RC_LINES__
 
 
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
-# 4. Open another shell session or restart the current one with
+# 5. Open another shell session or restart the current one with
 -~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
 
 
