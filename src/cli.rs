@@ -4,7 +4,9 @@ use std::env;
 /// The inferred commands that `wok` can execute
 #[derive(Debug, Clone, PartialEq)]
 pub enum InferredCommand {
-    /// Setup command (no arguments)
+    /// Dashboard (no arguments)
+    Dashboard,
+    /// Setup command
     Setup { shell: Option<String>, manual: bool },
     /// Add repository (URL argument)
     Add { repo_url: String },
@@ -75,6 +77,12 @@ impl WokCli {
                     .default_value("tree"),
             )
             .arg(
+                Arg::new("setup")
+                    .long("setup")
+                    .help("Run the setup command")
+                    .action(ArgAction::SetTrue),
+            )
+            .arg(
                 Arg::new("shell")
                     .short('s')
                     .long("shell")
@@ -103,7 +111,7 @@ impl WokCli {
             )
             .group(
                 ArgGroup::new("setup_options")
-                    .args(&["shell", "manual"])
+                    .args(&["setup", "shell", "manual"])
                     .required(false)
                     .multiple(true)
                     .conflicts_with_all(&["subcommands", "list_options", "fast_forward_options"]),
@@ -176,11 +184,16 @@ impl WokCli {
             }
         }
 
-        // No arguments - default to setup
-        Ok(InferredCommand::Setup {
-            shell: matches.get_one::<String>("shell").cloned(),
-            manual: matches.get_flag("manual"),
-        })
+        // Check if setup options are provided
+        if matches.get_flag("setup") || matches.contains_id("shell") || matches.get_flag("manual") {
+            return Ok(InferredCommand::Setup {
+                shell: matches.get_one::<String>("shell").cloned(),
+                manual: matches.get_flag("manual"),
+            });
+        }
+
+        // No arguments - default to dashboard
+        Ok(InferredCommand::Dashboard)
     }
 
     /// Check if a string looks like a URL
@@ -301,8 +314,12 @@ mod tests {
                 input: "-".into(),
             },
 
-        test_setup_no_args:
+        test_dashboard_no_args:
             vec!["wok"],
+            InferredCommand::Dashboard,
+
+        test_setup_flag:
+            vec!["wok", "--setup"],
             InferredCommand::Setup { shell: None, manual: false },
 
         test_setup_with_shell:

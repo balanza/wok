@@ -7,9 +7,10 @@ use std::env;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = cli::WokCli::parse().unwrap();
 
-    let workspace = env::var("WOK_SPACE").unwrap_or_else(|_| default_workspace());
+    let (workspace, source) = determine_workspace();
 
     return match command {
+        cli::InferredCommand::Dashboard => commands::dashboard::handle(&workspace, &source),
         cli::InferredCommand::Add { repo_url } => commands::add::handle(&workspace, &repo_url),
         cli::InferredCommand::List { org, format } => {
             commands::list::handle(&workspace, org, &format)
@@ -20,6 +21,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::InferredCommand::Import { input } => commands::import::handle(&workspace, &input),
         cli::InferredCommand::Setup { shell, manual } => commands::setup::handle(&shell, manual),
     };
+}
+
+fn determine_workspace() -> (String, String) {
+    match env::var("WOK_SPACE") {
+        Ok(val) => (val, "env".to_string()),
+        Err(_) => (default_workspace(), "default".to_string()),
+    }
 }
 
 fn default_workspace() -> String {

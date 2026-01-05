@@ -14,9 +14,14 @@
 # default: ~/Workspace
 echo $WOK_SPACE
 
-# setup on the current shell (first use only)
-# the current shell is detected automatically
+# show workspace dashboard (projects count, orgs count)
 wok
+
+# setup on the current shell (first use only)
+# if not provided, the shell will be detectged automatically
+wok --setup
+wok --setup --shell zsh
+wok --setup --manual
 
 # clone the repo into $WOK_SPACE/acme/foo
 wok git@github.com:acme/foo.git

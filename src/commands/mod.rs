@@ -1,4 +1,5 @@
 pub mod add;
+pub mod dashboard;
 pub mod export;
 pub mod ff;
 pub mod go;
