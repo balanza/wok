@@ -4,5 +4,7 @@ pub mod lib {
     pub mod fuzzy;
     pub mod list_writer;
     pub mod projects;
+    pub mod shell;
     pub mod spinner;
+    pub mod templates;
 }
