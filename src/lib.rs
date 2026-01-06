@@ -6,4 +6,5 @@ pub mod lib {
     pub mod projects;
     pub mod shell;
     pub mod spinner;
+    pub mod templates;
 }
