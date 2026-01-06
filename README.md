@@ -46,5 +46,17 @@ wok --export > wok.json
 
 # add all project from a previous export
 wok --import wok.json
-cat wok.json | wok --import 
+cat wok.json | wok --import
+
+# scan a directory for git repositories
+wok --scrape /path/to/directory
+
+# like scrape, but filtered orgs only
+wok --scrape /path/to/directory --org acme,ymca
+
+# export the list of discovered repositories
+wok --scrape /path/to/directory --export > discovered.json
+
+# import all discovered repositories into the workspace
+wok --scrape /path/to/directory --import
 ```
