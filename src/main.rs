@@ -20,6 +20,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::InferredCommand::Export {} => commands::export::handle(&workspace),
         cli::InferredCommand::Import { input } => commands::import::handle(&workspace, &input),
         cli::InferredCommand::Setup { shell, manual } => commands::setup::handle(&shell, manual),
+        cli::InferredCommand::Scrape {
+            path,
+            org,
+            export_mode,
+            import_mode,
+        } => commands::scrape::handle(&workspace, &path, org, export_mode, import_mode),
     };
 }
 

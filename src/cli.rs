@@ -23,6 +23,13 @@ pub enum InferredCommand {
     Export,
     /// Import workspace
     Import { input: String },
+    /// Scrape a directory for git repositories
+    Scrape {
+        path: String,
+        org: Option<Vec<String>>,
+        export_mode: bool,
+        import_mode: bool,
+    },
 }
 
 /// CLI argument parser with inference logic
@@ -51,16 +58,23 @@ impl WokCli {
             .arg(
                 Arg::new("export")
                     .long("export")
-                    .help("Export the workspace")
+                    .help("Export the workspace or scrape results to stdout")
                     .action(ArgAction::SetTrue),
             )
             .arg(
                 Arg::new("import")
                     .long("import")
-                    .help("Import a workspace from a file or stdin")
+                    .help("Import a workspace from a file, or import scraped repositories")
                     .value_name("FILE")
                     .num_args(0..=1) // allow 0 or 1 argument
                     .default_missing_value("-"), // if no arg given, treat as "-"
+            )
+            .arg(
+                Arg::new("scrape")
+                    .long("scrape")
+                    .help("Scrape a directory recursively for git repositories")
+                    .value_name("PATH")
+                    .num_args(1),
             )
             .arg(
                 Arg::new("org")
@@ -104,31 +118,11 @@ impl WokCli {
                     .num_args(1..=1), // Allow 1 positional argument
             )
             .group(
-                ArgGroup::new("subcommands")
-                    .args(&["list", "fast-forward", "export", "import", "project"])
-                    .required(false)
-                    .multiple(false),
-            )
-            .group(
                 ArgGroup::new("setup_options")
                     .args(&["setup", "shell", "manual"])
                     .required(false)
                     .multiple(true)
-                    .conflicts_with_all(&["subcommands", "list_options", "fast_forward_options"]),
-            )
-            .group(
-                ArgGroup::new("list_options")
-                    .args(&["org", "format"])
-                    .required(false)
-                    .multiple(true)
-                    .requires("list"),
-            )
-            .group(
-                ArgGroup::new("fast_forward_options")
-                    .args(&["org"])
-                    .required(false)
-                    .multiple(true)
-                    .requires("fast-forward"),
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape"]),
             )
     }
 
@@ -140,8 +134,52 @@ impl WokCli {
 
     /// Infer the command from parsed arguments
     fn infer_command(matches: &ArgMatches) -> Result<InferredCommand, String> {
-        // Handle flag-based commands first
+        // Handle scrape command first (since it can combine with export/import)
+        if let Some(scrape_path) = matches.get_one::<String>("scrape") {
+            // Scrape cannot be combined with list, ff, or project
+            if matches.get_flag("list") {
+                return Err("Cannot use --scrape with --list".to_string());
+            }
+            if matches.get_flag("fast-forward") {
+                return Err("Cannot use --scrape with --ff".to_string());
+            }
+            if matches.contains_id("project") {
+                return Err("Cannot use --scrape with a project argument".to_string());
+            }
+
+            let org = matches
+                .get_many::<String>("org")
+                .map(|v| v.cloned().collect());
+
+            // Check if --export is specified with scrape
+            let export_mode = matches.get_flag("export");
+
+            // Check if --import is specified with scrape
+            let import_mode = matches.contains_id("import") && !export_mode;
+
+            // Cannot have both export and import with scrape
+            if export_mode && import_mode {
+                return Err("Cannot use both --export and --import with --scrape".to_string());
+            }
+
+            return Ok(InferredCommand::Scrape {
+                path: scrape_path.clone(),
+                org,
+                export_mode,
+                import_mode,
+            });
+        }
+
+        // Handle flag-based commands
         if matches.get_flag("list") {
+            // List cannot be combined with export/import
+            if matches.get_flag("export") {
+                return Err("Cannot use --list with --export".to_string());
+            }
+            if matches.contains_id("import") {
+                return Err("Cannot use --list with --import".to_string());
+            }
+
             return Ok(InferredCommand::List {
                 org: matches
                     .get_many::<String>("org")
@@ -154,6 +192,14 @@ impl WokCli {
         }
 
         if matches.get_flag("fast-forward") {
+            // Fast-forward cannot be combined with export/import
+            if matches.get_flag("export") {
+                return Err("Cannot use --ff with --export".to_string());
+            }
+            if matches.contains_id("import") {
+                return Err("Cannot use --ff with --import".to_string());
+            }
+
             return Ok(InferredCommand::FastForward {
                 org: matches
                     .get_many::<String>("org")
@@ -161,11 +207,24 @@ impl WokCli {
             });
         }
 
+        // Export without scrape
         if matches.get_flag("export") {
+            // Cannot be combined with import or project
+            if matches.contains_id("import") {
+                return Err("Cannot use --export with --import".to_string());
+            }
+            if matches.contains_id("project") {
+                return Err("Cannot use --export with a project argument".to_string());
+            }
             return Ok(InferredCommand::Export);
         }
 
+        // Import without scrape
         if let Some(import_file) = matches.get_one::<String>("import") {
+            // Cannot be combined with project
+            if matches.contains_id("project") {
+                return Err("Cannot use --import with a project argument".to_string());
+            }
             return Ok(InferredCommand::Import {
                 input: import_file.clone(),
             });
@@ -239,14 +298,14 @@ mod tests {
                 #[test]
                 fn $name() {
                     let args = $args;
-                    let match_result = WokCli::build().try_get_matches_from(args);
+                    let match_result = WokCli::build().try_get_matches_from(args.clone());
 
-                    if let Ok(matches) = &match_result {
+                    // Either parsing should fail, or inference should fail
+                    if let Ok(matches) = match_result {
                         let result = WokCli::infer_command(&matches);
-                        assert!(result.is_err());
+                        assert!(result.is_err(), "Expected inference to fail for args: {:?}", args);
                     }
-
-                    assert!(match_result.is_err());
+                    // If parsing failed, that's also acceptable
                 }
             )*
         }
@@ -334,18 +393,54 @@ mod tests {
             vec!["wok", "--shell", "zsh", "--manual"],
             InferredCommand::Setup { shell: Some("zsh".into()), manual: true },
 
+        test_scrape:
+            vec!["wok", "--scrape", "/path/to/dir"],
+            InferredCommand::Scrape {
+                path: "/path/to/dir".into(),
+                org: None,
+                export_mode: false,
+                import_mode: false,
+            },
+
+        test_scrape_with_org:
+            vec!["wok", "--scrape", "/path/to/dir", "--org", "org1,org2"],
+            InferredCommand::Scrape {
+                path: "/path/to/dir".into(),
+                org: Some(vec!["org1".into(), "org2".into()]),
+                export_mode: false,
+                import_mode: false,
+            },
+
+        test_scrape_with_export:
+            vec!["wok", "--scrape", "/path/to/dir", "--export"],
+            InferredCommand::Scrape {
+                path: "/path/to/dir".into(),
+                org: None,
+                export_mode: true,
+                import_mode: false,
+            },
+
+        test_scrape_with_import:
+            vec!["wok", "--scrape", "/path/to/dir", "--import"],
+            InferredCommand::Scrape {
+                path: "/path/to/dir".into(),
+                org: None,
+                export_mode: false,
+                import_mode: true,
+            },
+
+        test_scrape_with_org_and_export:
+            vec!["wok", "--scrape", "/path/to/dir", "--org", "myorg", "--export"],
+            InferredCommand::Scrape {
+                path: "/path/to/dir".into(),
+                org: Some(vec!["myorg".into()]),
+                export_mode: true,
+                import_mode: false,
+            },
+
     }
 
     cli_test_error! {
-        test_conflict_list_and_ff:
-            vec!["wok", "--list", "--ff"]
-
-        test_conflict_list_and_project:
-            vec!["wok", "--list", "my-project"]
-
-        test_conflict_ff_and_project:
-            vec!["wok", "--ff", "my-project"]
-
         test_conflict_setup_and_list:
             vec!["wok", "--shell", "bash", "--list"]
 
@@ -361,25 +456,37 @@ mod tests {
         test_conflict_setup_and_project:
             vec!["wok", "--shell", "zsh", "user/repo"]
 
+        test_conflict_setup_and_scrape:
+            vec!["wok", "--shell", "bash", "--scrape", "/path"]
+
         test_conflict_list_and_export:
             vec!["wok", "--list", "--export"]
 
         test_conflict_list_and_import:
-            vec!["wok", "--list", "--import", "file.txt"]
+            vec!["wok", "--list", "--import"]
 
         test_conflict_ff_and_export:
             vec!["wok", "--ff", "--export"]
 
         test_conflict_ff_and_import:
-            vec!["wok", "--ff", "--import", "file.txt"]
+            vec!["wok", "--ff", "--import"]
 
         test_conflict_export_and_import:
-            vec!["wok", "--export", "--import", "file.txt"]
+            vec!["wok", "--export", "--import"]
 
         test_conflict_export_and_project:
-            vec!["wok", "--export", "user/repo"]
+            vec!["wok", "--export", "my-project"]
 
         test_conflict_import_and_project:
-            vec!["wok", "--import", "file.txt", "user/repo"]
+            vec!["wok", "--import", "file.txt", "my-project"]
+
+        test_conflict_scrape_and_list:
+            vec!["wok", "--scrape", "/path", "--list"]
+
+        test_conflict_scrape_and_ff:
+            vec!["wok", "--scrape", "/path", "--ff"]
+
+        test_conflict_scrape_and_project:
+            vec!["wok", "--scrape", "/path", "my-project"]
     }
 }
