@@ -2,21 +2,7 @@ use std::env;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use wok::lib::constants::{GOTO_MARKER, MULTIPLE_MATCHES_MARKER};
-
-enum SupportedShells {
-    Bash,
-    Zsh,
-}
-
-impl ToString for SupportedShells {
-    fn to_string(&self) -> String {
-        match self {
-            SupportedShells::Bash => "bash".to_string(),
-            SupportedShells::Zsh => "zsh".to_string(),
-        }
-    }
-}
-
+use wok::lib::shell::{detect_shell, SupportedShells};
 struct WokrcScriptParams {
     binary_path: String,
     goto_marker: String,
@@ -48,33 +34,6 @@ pub fn handle(shell: &Option<String>, manual: bool) -> Result<(), Box<dyn std::e
     }
 
     Ok(())
-}
-
-fn detect_shell() -> Result<SupportedShells, Box<dyn std::error::Error>> {
-    // Get current process PID
-    let pid = std::process::id();
-
-    // Use ps to get PPID of current process
-    let ppid_output = Command::new("ps")
-        .args(&["-p", &pid.to_string(), "-o", "ppid="])
-        .output()
-        .expect("failed to execute ps to get ppid");
-
-    let ppid_str = str::from_utf8(&ppid_output.stdout).unwrap().trim();
-
-    // Use ps to get command name of parent process
-    let parent_cmd_output = Command::new("ps")
-        .args(&["-p", ppid_str, "-o", "comm="])
-        .output()
-        .expect("failed to execute ps to get parent command name");
-
-    let parent_cmd = str::from_utf8(&parent_cmd_output.stdout).unwrap().trim();
-
-    match parent_cmd {
-        "bash" => Ok(SupportedShells::Bash),
-        "zsh" => Ok(SupportedShells::Zsh),
-        _ => Err(Box::from(format!("Unsupported shell type: {}", parent_cmd))),
-    }
 }
 
 fn validate_shell(shell: &str) -> Result<SupportedShells, Box<dyn std::error::Error>> {
@@ -170,14 +129,21 @@ fn print_instructions(
                 let script = include_str!("../../templates/autocomplete.bash");
                 let path = "$HOME/.wok_completion_bash".to_string();
                 let source_cmd = "$> source ~/.wok_completion_bash".to_string();
-                let rc_lines = "[ -f ~/.wok_completion_bash ] && source ~/.wok_completion_bash".to_string();
+                let rc_lines =
+                    "[ -f ~/.wok_completion_bash ] && source ~/.wok_completion_bash".to_string();
                 (script, path, source_cmd, rc_lines)
             }
             SupportedShells::Zsh => {
                 let script = include_str!("../../templates/autocomplete.zsh");
-                let path = "$HOME/.zsh/completions/_wok (create ~/.zsh/completions directory first)".to_string();
-                let source_cmd = "$> fpath=(~/.zsh/completions $fpath)\n$> autoload -Uz compinit && compinit".to_string();
-                let rc_lines = "fpath=(~/.zsh/completions $fpath)\nautoload -Uz compinit && compinit".to_string();
+                let path =
+                    "$HOME/.zsh/completions/_wok (create ~/.zsh/completions directory first)"
+                        .to_string();
+                let source_cmd =
+                    "$> fpath=(~/.zsh/completions $fpath)\n$> autoload -Uz compinit && compinit"
+                        .to_string();
+                let rc_lines =
+                    "fpath=(~/.zsh/completions $fpath)\nautoload -Uz compinit && compinit"
+                        .to_string();
                 (script, path, source_cmd, rc_lines)
             }
         };
@@ -190,8 +156,14 @@ fn print_instructions(
             ("WOKRC_NAME".to_string(), ".wokrc".to_string()),
             ("WOKRC_SCRIPT".to_string(), wokrc_script.to_string()),
             ("AUTOCOMPLETE_PATH".to_string(), autocomplete_path),
-            ("AUTOCOMPLETE_SCRIPT".to_string(), autocomplete_script.to_string()),
-            ("AUTOCOMPLETE_SOURCE_CMD".to_string(), autocomplete_source_cmd),
+            (
+                "AUTOCOMPLETE_SCRIPT".to_string(),
+                autocomplete_script.to_string(),
+            ),
+            (
+                "AUTOCOMPLETE_SOURCE_CMD".to_string(),
+                autocomplete_source_cmd,
+            ),
             ("AUTOCOMPLETE_RC_LINES".to_string(), autocomplete_rc_lines),
             (
                 "SHELL_RC_FILE".to_string(),
@@ -227,7 +199,10 @@ fn shell_rc_file(shell: &SupportedShells) -> Result<String, Box<dyn std::error::
 }
 
 fn install_autocomplete_script(shell: &SupportedShells) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Installing autocomplete script for {} shell...", shell.to_string());
+    println!(
+        "Installing autocomplete script for {} shell...",
+        shell.to_string()
+    );
 
     match shell {
         SupportedShells::Bash => {
@@ -238,19 +213,29 @@ fn install_autocomplete_script(shell: &SupportedShells) -> Result<(), Box<dyn st
             // Write autocomplete script
             let mut file = std::fs::File::create(&autocomplete_path)?;
             file.write_all(autocomplete_script.as_bytes())?;
-            println!("Autocomplete script installed at: {}.", autocomplete_path.display());
+            println!(
+                "Autocomplete script installed at: {}.",
+                autocomplete_path.display()
+            );
 
             // Add source command to .bashrc
             let rc_file = shell_rc_file(&shell)?;
             let mut rc_file_content = std::fs::read_to_string(&rc_file)?;
-            let source_line = format!("[ -f {} ] && source {}", autocomplete_path.display(), autocomplete_path.display());
+            let source_line = format!(
+                "[ -f {} ] && source {}",
+                autocomplete_path.display(),
+                autocomplete_path.display()
+            );
 
             if !rc_file_content.contains(&source_line) {
                 rc_file_content.push_str(&format!("\n{}\n", source_line));
                 std::fs::write(&rc_file, rc_file_content)?;
                 println!("Added autocomplete source command to {}.", rc_file);
             } else {
-                println!("Autocomplete source command already exists in {}, skipping.", rc_file);
+                println!(
+                    "Autocomplete source command already exists in {}, skipping.",
+                    rc_file
+                );
             }
         }
         SupportedShells::Zsh => {
@@ -265,7 +250,10 @@ fn install_autocomplete_script(shell: &SupportedShells) -> Result<(), Box<dyn st
             // Write autocomplete script
             let mut file = std::fs::File::create(&autocomplete_path)?;
             file.write_all(autocomplete_script.as_bytes())?;
-            println!("Autocomplete script installed at: {}.", autocomplete_path.display());
+            println!(
+                "Autocomplete script installed at: {}.",
+                autocomplete_path.display()
+            );
 
             // Add fpath and compinit to .zshrc
             let rc_file = shell_rc_file(&shell)?;
@@ -288,7 +276,10 @@ fn install_autocomplete_script(shell: &SupportedShells) -> Result<(), Box<dyn st
                 std::fs::write(&rc_file, rc_file_content)?;
                 println!("Added autocomplete configuration to {}.", rc_file);
             } else {
-                println!("Autocomplete configuration already exists in {}, skipping.", rc_file);
+                println!(
+                    "Autocomplete configuration already exists in {}, skipping.",
+                    rc_file
+                );
             }
         }
     }
@@ -438,7 +429,9 @@ mod tests {
         install_autocomplete_script(&SupportedShells::Zsh).unwrap();
 
         let zshrc_content = fs::read_to_string(&zshrc).unwrap();
-        let fpath_count = zshrc_content.matches("fpath=(~/.zsh/completions $fpath)").count();
+        let fpath_count = zshrc_content
+            .matches("fpath=(~/.zsh/completions $fpath)")
+            .count();
         assert_eq!(fpath_count, 1);
 
         if let Some(home) = original_home {
@@ -456,7 +449,11 @@ mod tests {
         let home_dir = temp_dir.path();
 
         let zshrc = home_dir.join(".zshrc");
-        fs::write(&zshrc, "# existing zshrc\nautoload -Uz compinit\ncompinit\n").unwrap();
+        fs::write(
+            &zshrc,
+            "# existing zshrc\nautoload -Uz compinit\ncompinit\n",
+        )
+        .unwrap();
 
         let original_home = std::env::var("HOME").ok();
         std::env::set_var("HOME", home_dir);
@@ -495,7 +492,8 @@ mod tests {
         let autocomplete_script = include_str!("../../templates/autocomplete.bash");
         let autocomplete_path = "$HOME/.wok_completion_bash".to_string();
         let autocomplete_source_cmd = "$> source ~/.wok_completion_bash".to_string();
-        let autocomplete_rc_lines = "[ -f ~/.wok_completion_bash ] && source ~/.wok_completion_bash".to_string();
+        let autocomplete_rc_lines =
+            "[ -f ~/.wok_completion_bash ] && source ~/.wok_completion_bash".to_string();
 
         let instructions = compile_template(
             raw,
@@ -504,10 +502,19 @@ mod tests {
                 ("WOKRC_NAME".to_string(), ".wokrc".to_string()),
                 ("WOKRC_SCRIPT".to_string(), wokrc_script.to_string()),
                 ("AUTOCOMPLETE_PATH".to_string(), autocomplete_path),
-                ("AUTOCOMPLETE_SCRIPT".to_string(), autocomplete_script.to_string()),
-                ("AUTOCOMPLETE_SOURCE_CMD".to_string(), autocomplete_source_cmd),
+                (
+                    "AUTOCOMPLETE_SCRIPT".to_string(),
+                    autocomplete_script.to_string(),
+                ),
+                (
+                    "AUTOCOMPLETE_SOURCE_CMD".to_string(),
+                    autocomplete_source_cmd,
+                ),
                 ("AUTOCOMPLETE_RC_LINES".to_string(), autocomplete_rc_lines),
-                ("SHELL_RC_FILE".to_string(), format!("{}/.bashrc", home_dir.display())),
+                (
+                    "SHELL_RC_FILE".to_string(),
+                    format!("{}/.bashrc", home_dir.display()),
+                ),
                 ("SHELL_TYPE".to_string(), "bash".to_string()),
             ]
             .iter()
@@ -544,9 +551,13 @@ mod tests {
         let raw = include_str!("../../templates/manual_setup.txt");
 
         let autocomplete_script = include_str!("../../templates/autocomplete.zsh");
-        let autocomplete_path = "$HOME/.zsh/completions/_wok (create ~/.zsh/completions directory first)".to_string();
-        let autocomplete_source_cmd = "$> fpath=(~/.zsh/completions $fpath)\n$> autoload -Uz compinit && compinit".to_string();
-        let autocomplete_rc_lines = "fpath=(~/.zsh/completions $fpath)\nautoload -Uz compinit && compinit".to_string();
+        let autocomplete_path =
+            "$HOME/.zsh/completions/_wok (create ~/.zsh/completions directory first)".to_string();
+        let autocomplete_source_cmd =
+            "$> fpath=(~/.zsh/completions $fpath)\n$> autoload -Uz compinit && compinit"
+                .to_string();
+        let autocomplete_rc_lines =
+            "fpath=(~/.zsh/completions $fpath)\nautoload -Uz compinit && compinit".to_string();
 
         let instructions = compile_template(
             raw,
@@ -555,10 +566,19 @@ mod tests {
                 ("WOKRC_NAME".to_string(), ".wokrc".to_string()),
                 ("WOKRC_SCRIPT".to_string(), wokrc_script.to_string()),
                 ("AUTOCOMPLETE_PATH".to_string(), autocomplete_path),
-                ("AUTOCOMPLETE_SCRIPT".to_string(), autocomplete_script.to_string()),
-                ("AUTOCOMPLETE_SOURCE_CMD".to_string(), autocomplete_source_cmd),
+                (
+                    "AUTOCOMPLETE_SCRIPT".to_string(),
+                    autocomplete_script.to_string(),
+                ),
+                (
+                    "AUTOCOMPLETE_SOURCE_CMD".to_string(),
+                    autocomplete_source_cmd,
+                ),
                 ("AUTOCOMPLETE_RC_LINES".to_string(), autocomplete_rc_lines),
-                ("SHELL_RC_FILE".to_string(), format!("{}/.zshrc", home_dir.display())),
+                (
+                    "SHELL_RC_FILE".to_string(),
+                    format!("{}/.zshrc", home_dir.display()),
+                ),
                 ("SHELL_TYPE".to_string(), "zsh".to_string()),
             ]
             .iter()
