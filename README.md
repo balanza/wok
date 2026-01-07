@@ -76,7 +76,6 @@ Download the latest release for your platform from the [releases page](https://g
 ### Quick Install Script
 
 ```bash
-# Detect platform and install automatically
 curl -sSL https://raw.githubusercontent.com/balanza/wok/main/install.sh | bash
 ```
 
