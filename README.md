@@ -64,25 +64,40 @@ wok --scrape /path/to/directory --export > discovered.json
 wok --scrape /path/to/directory --import
 ```
 
-## Build from source
+## Installation
 
-### Prerequisites
+### Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from the [releases page](https://github.com/balanza/wok/releases):
+
+### Quick Install Script
+
+```bash
+# Detect platform and install automatically
+curl -sSL https://raw.githubusercontent.com/balanza/wok/main/install.sh | bash
+```
+
+### Build from Source
+
+For development or if pre-built binaries don't work for your system:
+
+#### Prerequisites
 - Rust 1.70 or later
 
-### Steps
+#### Steps
 
 ```sh
-# clone the repository
+# Clone the repository
 git clone https://github.com/balanza/wok.git
 cd wok
 
-# build the project
+# Build the project
 cargo build --release
 
-# the binary will be available at ./target/release/wok
+# The binary will be available at ./target/release/wok
 ./target/release/wok --help
 
-# optionally, install it to your system
+# Optionally, install it to your system
 cargo install --path .
 ```
 
