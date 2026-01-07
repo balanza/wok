@@ -6,5 +6,6 @@ pub mod ff;
 pub mod go;
 pub mod import;
 pub mod list;
+pub mod remove;
 pub mod scrape;
 pub mod setup;

@@ -10,6 +10,8 @@ pub enum InferredCommand {
     Setup { shell: Option<String>, manual: bool },
     /// Clean command (remove setup changes)
     Clean { shell: Option<String> },
+    /// Remove command (delete project from workspace)
+    Remove { search: String },
     /// Add repository (URL argument)
     Add { repo_url: String },
     /// Go to project (project path argument)
@@ -103,7 +105,15 @@ impl WokCli {
                     .long("clean")
                     .help("Remove all setup changes (delete files and remove lines from profile)")
                     .action(ArgAction::SetTrue)
-                    .conflicts_with_all(&["setup", "manual", "list", "fast-forward", "export", "import", "project", "scrape"]),
+                    .conflicts_with_all(&["setup", "manual", "list", "fast-forward", "export", "import", "project", "scrape", "rm"]),
+            )
+            .arg(
+                Arg::new("rm")
+                    .long("rm")
+                    .help("Remove a project from the workspace")
+                    .value_name("PROJECT")
+                    .num_args(1)
+                    .conflicts_with_all(&["setup", "clean", "list", "fast-forward", "export", "import", "project", "scrape"]),
             )
             .arg(
                 Arg::new("shell")
@@ -132,7 +142,7 @@ impl WokCli {
                     .args(&["setup", "manual"])
                     .required(false)
                     .multiple(true)
-                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape", "clean"]),
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape", "clean", "rm"]),
             )
     }
 
@@ -257,6 +267,13 @@ impl WokCli {
         if matches.get_flag("clean") {
             return Ok(InferredCommand::Clean {
                 shell: matches.get_one::<String>("shell").cloned(),
+            });
+        }
+
+        // Check if remove options are provided
+        if let Some(search) = matches.get_one::<String>("rm") {
+            return Ok(InferredCommand::Remove {
+                search: search.clone(),
             });
         }
 
@@ -455,6 +472,12 @@ mod tests {
                 import_mode: false,
             },
 
+        test_remove:
+            vec!["wok", "--rm", "myproject"],
+            InferredCommand::Remove {
+                search: "myproject".into(),
+            },
+
     }
 
     cli_test_error! {
@@ -505,5 +528,17 @@ mod tests {
 
         test_conflict_scrape_and_project:
             vec!["wok", "--scrape", "/path", "my-project"]
+
+        test_conflict_remove_and_setup:
+            vec!["wok", "--rm", "myproject", "--setup"]
+
+        test_conflict_remove_and_clean:
+            vec!["wok", "--rm", "myproject", "--clean"]
+
+        test_conflict_remove_and_list:
+            vec!["wok", "--rm", "myproject", "--list"]
+
+        test_conflict_remove_and_project:
+            vec!["wok", "--rm", "myproject", "another-project"]
     }
 }

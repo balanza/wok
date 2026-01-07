@@ -21,6 +21,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::InferredCommand::Import { input } => commands::import::handle(&workspace, &input),
         cli::InferredCommand::Setup { shell, manual } => commands::setup::handle(&shell, manual),
         cli::InferredCommand::Clean { shell } => commands::clean::handle(&shell),
+        cli::InferredCommand::Remove { search } => {
+            commands::remove::handle(&workspace, &search)
+        }
         cli::InferredCommand::Scrape {
             path,
             org,
