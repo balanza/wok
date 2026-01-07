@@ -2,8 +2,8 @@ use std::env;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use wok::lib::shell::{
-    detect_shell, prepare_shell, ShellSetupItem, ShellSetupItemName, ShellSetupItemStatus,
-    SupportedShells,
+    detect_shell, prepare_shell, validate_shell, ShellSetupItem, ShellSetupItemName,
+    ShellSetupItemStatus, SupportedShells,
 };
 
 pub fn handle(shell: &Option<String>, manual: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -66,14 +66,6 @@ fn install(items: Vec<ShellSetupItem>) -> Result<(), Box<dyn std::error::Error>>
         }
     }
     Ok(())
-}
-
-fn validate_shell(shell: &str) -> Result<SupportedShells, Box<dyn std::error::Error>> {
-    match shell.to_lowercase().as_str() {
-        "bash" => Ok(SupportedShells::Bash),
-        "zsh" => Ok(SupportedShells::Zsh),
-        _ => Err(Box::from(format!("Unsupported shell type: {}", shell))),
-    }
 }
 
 fn compile_template(
@@ -550,7 +542,10 @@ mod tests {
         let second_modified = fs::metadata(&wokrc_path).unwrap().modified().unwrap();
 
         // Content should be identical
-        assert_eq!(first_content, second_content, "Wokrc file content should not change");
+        assert_eq!(
+            first_content, second_content,
+            "Wokrc file content should not change"
+        );
 
         // File should not have been rewritten (modification time should be the same)
         assert_eq!(

@@ -96,6 +96,14 @@ pub fn prepare_shell(
     collect_results(items)
 }
 
+pub fn validate_shell(shell: &str) -> Result<SupportedShells, Box<dyn std::error::Error>> {
+    match shell.to_lowercase().as_str() {
+        "bash" => Ok(SupportedShells::Bash),
+        "zsh" => Ok(SupportedShells::Zsh),
+        _ => Err(Box::from(format!("Unsupported shell type: {}", shell))),
+    }
+}
+
 fn wokrc_file_setup_item(
     shell: &SupportedShells,
     binary_path: String,
