@@ -8,6 +8,8 @@ pub enum InferredCommand {
     Dashboard,
     /// Setup command
     Setup { shell: Option<String>, manual: bool },
+    /// Clean command (remove setup changes)
+    Clean { shell: Option<String> },
     /// Add repository (URL argument)
     Add { repo_url: String },
     /// Go to project (project path argument)
@@ -97,10 +99,18 @@ impl WokCli {
                     .action(ArgAction::SetTrue),
             )
             .arg(
+                Arg::new("clean")
+                    .long("clean")
+                    .help("Remove all setup changes (delete files and remove lines from profile)")
+                    .action(ArgAction::SetTrue)
+                    .conflicts_with_all(&["setup", "manual", "list", "fast-forward", "export", "import", "project", "scrape"]),
+            )
+            .arg(
                 Arg::new("shell")
                     .short('s')
                     .long("shell")
-                    .help("Shell type for setup (e.g. bash, zsh, fish)"),
+                    .help("Shell type for setup/clean (e.g. bash, zsh, fish)")
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape"]),
             )
             .arg(
                 Arg::new("manual")
@@ -119,10 +129,10 @@ impl WokCli {
             )
             .group(
                 ArgGroup::new("setup_options")
-                    .args(&["setup", "shell", "manual"])
+                    .args(&["setup", "manual"])
                     .required(false)
                     .multiple(true)
-                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape"]),
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "project", "scrape", "clean"]),
             )
     }
 
@@ -241,6 +251,13 @@ impl WokCli {
                     search: positional.clone(),
                 });
             }
+        }
+
+        // Check if clean options are provided
+        if matches.get_flag("clean") {
+            return Ok(InferredCommand::Clean {
+                shell: matches.get_one::<String>("shell").cloned(),
+            });
         }
 
         // Check if setup options are provided

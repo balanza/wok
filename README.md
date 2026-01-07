@@ -62,6 +62,9 @@ wok --scrape /path/to/directory --export > discovered.json
 
 # import all discovered repositories into the workspace
 wok --scrape /path/to/directory --import
+
+# clean setup
+wok --clean
 ```
 
 ## Installation
