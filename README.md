@@ -5,29 +5,25 @@
 <h3 align="center">A tool for organising and managing projects.</h3>
 
 
+`wok` is a CLI that makes it easy to move around projects. You can think about it as a smart alias for shortcutting frequently used commands.
+
+It is designed with the following principles in mind:
+* **Type as few characters as possible**; `wok` alone will infer what to do for daily tasks (add project, go to project), add flags for once-in-a-while commands (setup, export/import), uses fuzzy search whenever possible, provides autocomplete when it makes sense.
+* **Pwd independent**; `wok` commands run against the target workspace regardless of the current *pwd*.
 
 
-## Usage
+## Quick start
 
 ```sh
-# every command is executed referring to the base dir $WOK_SPACE
-# default: ~/Workspace
-echo $WOK_SPACE
-
-# show workspace dashboard (projects count, orgs count)
+# show workspace dashboard and status
+# run setup if not already done
 wok
-
-# setup on the current shell (first use only)
-# if not provided, the shell will be detectged automatically
-wok --setup
-wok --setup --shell zsh
-wok --setup --manual
 
 # clone the repo into $WOK_SPACE/acme/foo
 wok git@github.com:acme/foo.git
 
 # change the directory to the project dir
-wok <org>/<prj>
+wok acme/foo
 
 # list all the projects in the workspace, grouped by org
 wok -l 
@@ -40,6 +36,13 @@ wok --ff
 
 # like ff, but filtered orgs only
 wok --ff --org acme,ymca
+
+# run setup on the current shell (force re-run)
+# if not provided, the shell will be detected automatically
+# using --manual will print out instructions without modifying the current system
+wok --setup
+wok --setup --shell zsh
+wok --setup --manual
 
 # export the list of all projects
 wok --export > wok.json
@@ -60,3 +63,52 @@ wok --scrape /path/to/directory --export > discovered.json
 # import all discovered repositories into the workspace
 wok --scrape /path/to/directory --import
 ```
+
+## Build from source
+
+### Prerequisites
+- Rust 1.70 or later
+
+### Steps
+
+```sh
+# clone the repository
+git clone https://github.com/balanza/wok.git
+cd wok
+
+# build the project
+cargo build --release
+
+# the binary will be available at ./target/release/wok
+./target/release/wok --help
+
+# optionally, install it to your system
+cargo install --path .
+```
+
+## F.A.Q.
+
+### How do I start?
+Just `wok` and the workspace dashboard will tell you what to do. Most likely, you will need to setup if it's the first usage (the dashboard itself will prompt you, just type `y`).
+
+If you want to change the workspace directory, set the `WOK_SPACE` environment variable.
+
+### Why do I need to setup?
+To allow seamless integration with the shell when `cd`-ing to the project's root, `wok` needs to be wrapped with the `.wokrc` shell script. 
+
+Also, autocomplete features need dedicated installation to work, depending on the host's shell.
+
+### How do I start using `wok` with my current projects
+`wok` relies on projects to be under version control (supports `git` only for now) and stored in child directories of the target workspace. 
+
+You can import from an existing system using the `scrape` command:
+```sh
+wok --scrape /path/to/your/projects/
+```
+
+`wok` will look recursively into all child directories and will prompt you with the list of projects to import.
+
+## Future developments
+* handle `git worktree` for projects
+* cross-project tasks (example: fast-fetch from main branch)
+* improve stats in dashboard
