@@ -1,9 +1,14 @@
 use git_url_parse::GitUrl;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use wok::lib::spinner;
 
 pub fn handle(workspace: &str, repo_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some((org_name, repo_name)) = parse_repo_url(repo_url) {
+        ensure_workspace_exists(workspace)?;
+
         let destination = format!("{}/{}/{}", workspace, org_name, repo_name);
 
         let spinner = spinner::Spinner::new(format!("Cloning into {}", destination));
@@ -39,11 +44,29 @@ pub fn handle(workspace: &str, repo_url: &str) -> Result<(), Box<dyn std::error:
     }
 }
 
-// parse a repository URL and return the organization name and repository name
-// the repository can come in various formats, e.g.:
-// - git@github.com:balanza/wok.git
-// - https://github.com/balanza/wok.git
-// In both cases, we want to extract "balanza" and "wok"
+fn ensure_workspace_exists(workspace: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if !Path::new(workspace).exists() {
+        print!("Workspace directory '{}' does not exist. Create it? (y/n): ", workspace);
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_lowercase();
+
+        if input == "y" || input == "yes" {
+            fs::create_dir_all(workspace)?;
+            println!("Created workspace directory: {}", workspace);
+        } else {
+            return Err(format!(
+                "Workspace creation cancelled: Directory '{}' does not exist",
+                workspace
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 fn parse_repo_url(repo_url: &str) -> Option<(String, String)> {
     let parsed_url = GitUrl::parse(repo_url).ok()?;
 
