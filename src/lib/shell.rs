@@ -73,7 +73,12 @@ pub fn detect_shell() -> Result<SupportedShells, Box<dyn std::error::Error>> {
         .output()
         .expect("failed to execute ps to get parent command name");
 
-    let parent_cmd = str::from_utf8(&parent_cmd_output.stdout).unwrap().trim();
+    let parent_cmd = str::from_utf8(&parent_cmd_output.stdout)
+        .unwrap()
+        .split("/")
+        .last()
+        .unwrap()
+        .trim();
 
     match parent_cmd {
         "bash" => Ok(SupportedShells::Bash),
@@ -362,10 +367,7 @@ mod tests {
 
     #[test]
     fn test_shell_setup_item_name_display() {
-        assert_eq!(
-            format!("{}", ShellSetupItemName::WokrcFile),
-            "Wokrc File"
-        );
+        assert_eq!(format!("{}", ShellSetupItemName::WokrcFile), "Wokrc File");
         assert_eq!(
             format!("{}", ShellSetupItemName::WokrcConfiguration),
             "Wokrc Configuration"
@@ -421,8 +423,7 @@ mod tests {
         let file_path = temp_dir.path().join("test.txt");
         fs::write(&file_path, "line 1\nline 2\nline 3\n").unwrap();
 
-        let status =
-            check_file_contains_status(file_path.to_str().unwrap(), "line 4").unwrap();
+        let status = check_file_contains_status(file_path.to_str().unwrap(), "line 4").unwrap();
         assert_eq!(status, ShellSetupItemStatus::Todo);
     }
 
@@ -519,14 +520,24 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let item1 = Ok(ShellSetupItem {
             name: ShellSetupItemName::WokrcFile,
-            target: temp_dir.path().join("test1.txt").to_str().unwrap().to_string(),
+            target: temp_dir
+                .path()
+                .join("test1.txt")
+                .to_str()
+                .unwrap()
+                .to_string(),
             content: "content1".to_string(),
             entire_file: true,
             status: ShellSetupItemStatus::Todo,
         });
         let item2 = Ok(ShellSetupItem {
             name: ShellSetupItemName::AutocompleteFile,
-            target: temp_dir.path().join("test2.txt").to_str().unwrap().to_string(),
+            target: temp_dir
+                .path()
+                .join("test2.txt")
+                .to_str()
+                .unwrap()
+                .to_string(),
             content: "content2".to_string(),
             entire_file: true,
             status: ShellSetupItemStatus::Todo,
@@ -542,7 +553,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let item1 = Ok(ShellSetupItem {
             name: ShellSetupItemName::WokrcFile,
-            target: temp_dir.path().join("test1.txt").to_str().unwrap().to_string(),
+            target: temp_dir
+                .path()
+                .join("test1.txt")
+                .to_str()
+                .unwrap()
+                .to_string(),
             content: "content1".to_string(),
             entire_file: true,
             status: ShellSetupItemStatus::Todo,
@@ -574,7 +590,9 @@ mod tests {
         assert_eq!(items.len(), 3);
 
         // Check that we have all three items
-        let has_wokrc = items.iter().any(|i| matches!(i.name, ShellSetupItemName::WokrcFile));
+        let has_wokrc = items
+            .iter()
+            .any(|i| matches!(i.name, ShellSetupItemName::WokrcFile));
         let has_config = items
             .iter()
             .any(|i| matches!(i.name, ShellSetupItemName::WokrcConfiguration));
