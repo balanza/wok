@@ -1,7 +1,7 @@
 #!/bin/bash
 
 wok() {
-	local fd3=$(mktemp --suffix=_wok_fd3_$$)
+	local fd3=$(mktemp "${TMPDIR:-/tmp}/wok_fd3_$$.XXXXXX")
 	local output
 	output=$("__WOK_BINARY_PATH__" "$@" 3> "$fd3" 2>&1)
 	local retcode=$?

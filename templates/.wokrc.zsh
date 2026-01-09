@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 wok() {
-  local fd3=$(mktemp --suffix=_wok_fd3_$$)
+  local fd3=$(mktemp "${TMPDIR:-/tmp}/wok_fd3_$$.XXXXXX")
   local goto_dir
   local multiple_matches=0
 
