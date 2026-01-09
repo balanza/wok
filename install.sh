@@ -62,6 +62,4 @@ else
     fi
 fi
 
-echo ""
-echo "wok installed successfully!"
-echo "Run 'wok --help' to get started"
+wok
