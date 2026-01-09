@@ -9,9 +9,8 @@ pub fn handle(workspace: &str, source: &str) -> Result<(), Box<dyn std::error::E
     // Display dashboard header
     let version = env!("CARGO_PKG_VERSION");
     let title = format!("WOK v{}", version);
-    let box_width = 37; // Inner width of the box
-    let padding = (box_width - title.len()) / 2;
-    let padded_title = format!("{:^width$}", title, width = box_width);
+    let box_inner_width = 37;
+    let padded_title = format!("{:^width$}", title, width = box_inner_width);
 
     println!("╭─────────────────────────────────────╮");
     println!("│{}│", padded_title);
