@@ -113,7 +113,11 @@ fn get_project_item(
 
     // check if the current directory is same os a sub directory of the project path
     let is_current = std::env::current_dir()
-        .map(|current| current.starts_with(&project_path))
+        .and_then(|current| {
+            let current = current.canonicalize()?;
+            let project = std::path::Path::new(&project_path).canonicalize()?;
+            Ok(current == project || current.starts_with(&project))
+        })
         .unwrap_or(false);
 
     Ok(Some(ProjectItem {
