@@ -39,9 +39,6 @@ wok() {
     local current_index=1
     local num_matches=${#matches[@]}
 
-    echo "Multiple projects found. Use TAB or arrow keys to navigate, ENTER to select, Ctrl+C to cancel"
-    echo ""
-
     # Function to display the menu
     _wok_display_menu() {
       local idx=$1
