@@ -128,6 +128,33 @@ wok --scrape /path/to/your/projects/
 
 `wok` will look recursively into all child directories and will prompt you with the list of projects to import.
 
+### How to have multiple workspaces?
+Workspace can be selected by the value of `WOK_SPACE` environment variable, and each workspace is considered isolated by `wok`.
+
+For example, to have one workspace for work and one for personal stuff:
+
+```bash
+# set aliases
+work() {
+  WOK_SPACE=~/work wok "$@"
+}
+personal () {
+  WOK_SPACE=~/personal wok "$@"
+}
+
+# use work and personal as work aliases
+> work git@github.com:acme/foo.git
+> personal git@github.com:balanza/balanza.github.io.git
+
+> work -l 
+acme
+└── foo
+
+> personal -l
+balanza
+└── balanza.github.io
+```
+
 ## Future developments
 * handle `git worktree` for projects
 * cross-project tasks (example: fast-fetch from main branch)
