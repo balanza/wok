@@ -5,9 +5,9 @@ type ListWriterFn = fn(Vec<ProjectItem>, &mut dyn Write) -> io::Result<()>;
 
 pub fn get_writer_fn(format: &str) -> io::Result<ListWriterFn> {
     match format {
-        "json" => Ok(write_json),
-        "flat" => Ok(write_flat),
-        "tree" => Ok(write_tree),
+        "json" => Ok(write_project_tree_json),
+        "flat" => Ok(write_project_tree_flat),
+        "tree" => Ok(write_project_tree_compact),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("Unsupported format: {}", format),
@@ -15,7 +15,7 @@ pub fn get_writer_fn(format: &str) -> io::Result<ListWriterFn> {
     }
 }
 
-fn write_tree(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
+fn write_project_tree_compact(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
     if list.is_empty() {
         return Ok(());
     }
@@ -65,9 +65,8 @@ fn write_tree(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> 
     Ok(())
 }
 
-fn write_json(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
-    let sorted_list: Vec<ProjectItem> = to_sorted_project_list(list);
-    let result = serde_json::to_writer(writer, &sorted_list);
+fn write_project_tree_json(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
+    let result = serde_json::to_writer(writer, &list.clone());
 
     if let Err(e) = result {
         return Err(io::Error::new(
@@ -78,11 +77,16 @@ fn write_json(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> 
     Ok(())
 }
 
-fn write_flat(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
-    let sorted_list: Vec<ProjectItem> = to_sorted_project_list(list);
-    for item in sorted_list {
-        let marker = if item.is_current { " *" } else { "" };
-        writeln!(writer, "{}/{}{}", item.organization, item.name, marker)?;
+fn write_project_tree_flat(list: Vec<ProjectItem>, writer: &mut dyn Write) -> io::Result<()> {
+    for item in list {
+        let marker = if item.is_current { "* " } else { "" };
+        writeln!(
+            writer,
+            "{}{} ({})",
+            marker,
+            item.name,
+            item.remote.as_deref().unwrap_or("no remote")
+        )?;
     }
     Ok(())
 }
@@ -290,7 +294,7 @@ mod tests {
         writer_fn(items, &mut output).unwrap();
 
         let output_str = String::from_utf8(output).unwrap();
-        let expected = r#"[{"id":"org1::project1","name":"project1","organization":"org1","remote":"https://github.com/org1/project1.git","is_current":false},{"id":"org1::project3","name":"project3","organization":"org1","remote":null,"is_current":false},{"id":"org2::project2","name":"project2","organization":"org2","remote":"https://github.com/org2/project2.git","is_current":false}]"#;
+        let expected = r#"[{"id":"org1::project1","name":"project1","organization":"org1","remote":"https://github.com/org1/project1.git","is_current":false},{"id":"org2::project2","name":"project2","organization":"org2","remote":"https://github.com/org2/project2.git","is_current":false},{"id":"org1::project3","name":"project3","organization":"org1","remote":null,"is_current":false}]"#;
         assert_eq!(output_str, expected);
     }
 
