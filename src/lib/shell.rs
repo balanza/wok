@@ -365,10 +365,6 @@ mod tests {
     use super::*;
     use assert_fs::TempDir;
     use std::fs;
-    use std::sync::Mutex;
-
-    // Mutex to ensure tests that modify HOME run serially
-    static HOME_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_supported_shells_to_string() {
