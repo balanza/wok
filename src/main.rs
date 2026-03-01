@@ -30,6 +30,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             export_mode,
             import_mode,
         } => commands::scrape::handle(&workspace, &path, org, export_mode, import_mode),
+        cli::InferredCommand::GoWorktree {
+            project,
+            search,
+            extra_args,
+            yes,
+        } => commands::go_worktree::handle(
+            &workspace,
+            project.as_deref(),
+            search.as_deref(),
+            &extra_args,
+            yes,
+        ),
     };
 }
 

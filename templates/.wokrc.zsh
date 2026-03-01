@@ -55,11 +55,16 @@ wok() {
       # Display menu with current selection highlighted
       for ((i=1; i<=total; i++)); do
         tput el  # Clear line
+        # Show label part if entry has label::path format, otherwise show as-is
+        local display="${matches[$i]}"
+        if [[ "$display" == *"::"* ]]; then
+          display="${display%%::*}"
+        fi
         if [[ $i -eq $idx ]]; then
           # Highlight using reverse video
-          echo -e "\e[7m${matches[$i]}\e[0m"
+          echo -e "\e[7m${display}\e[0m"
         else
-          echo "${matches[$i]}"
+          echo "${display}"
         fi
       done
     }
@@ -93,7 +98,14 @@ wok() {
           ;;
         ''|$'\n'|$'\r')  # ENTER key (empty string, newline, or carriage return)
           echo ""  # Move to new line after selection
-          wok "${matches[$current_index]}"
+          local selected="${matches[$current_index]}"
+          if [[ "$selected" == *"::"* ]]; then
+            cd "${selected#*::}" || return $?
+          elif [[ "$selected" == /* ]]; then
+            cd "$selected" || return $?
+          else
+            wok "$selected"
+          fi
           return $?
           ;;
         $'\x03')  # Ctrl+C

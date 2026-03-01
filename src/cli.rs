@@ -34,6 +34,13 @@ pub enum InferredCommand {
         export_mode: bool,
         import_mode: bool,
     },
+    /// Go to a worktree
+    GoWorktree {
+        project: Option<String>,
+        search: Option<String>,
+        extra_args: Vec<String>,
+        yes: bool,
+    },
 }
 
 /// CLI argument parser with inference logic
@@ -130,6 +137,24 @@ impl WokCli {
                     .action(ArgAction::SetTrue),
             )
             .arg(
+                Arg::new("worktree")
+                    .short('w')
+                    .long("worktree")
+                    .help("Navigate to or manage worktrees")
+                    .value_name("WORKTREE")
+                    .num_args(0..=1)
+                    .default_missing_value("")
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "scrape", "setup", "clean", "rm", "manual"]),
+            )
+            .arg(
+                Arg::new("yes")
+                    .short('y')
+                    .long("yes")
+                    .help("Skip confirmation prompts (e.g. when creating a new worktree)")
+                    .action(ArgAction::SetTrue)
+                    .requires("worktree"),
+            )
+            .arg(
                 Arg::new("project")
                     .value_name("PROJECT")
                     .help("URL to add or project to navigate to")
@@ -205,6 +230,23 @@ impl WokCli {
                 org,
                 export_mode,
                 import_mode,
+            });
+        }
+
+        // Handle worktree command
+        if matches.contains_id("worktree") {
+            let worktree_val = matches.get_one::<String>("worktree").cloned();
+            let search = match worktree_val.as_deref() {
+                Some("") | None => None,
+                Some(v) => Some(v.to_string()),
+            };
+            let project = matches.get_one::<String>("project").cloned();
+            let yes = matches.get_flag("yes");
+            return Ok(InferredCommand::GoWorktree {
+                project,
+                search,
+                extra_args: trailing,
+                yes,
             });
         }
 
@@ -496,6 +538,68 @@ mod tests {
                 search: "myproject".into(),
             },
 
+        test_worktree_list:
+            vec!["wok", "my/project", "-w"],
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: None,
+                extra_args: vec![],
+                yes: false,
+            },
+
+        test_worktree_search:
+            vec!["wok", "my/project", "-w", "feature-branch"],
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: Some("feature-branch".into()),
+                extra_args: vec![],
+                yes: false,
+            },
+
+        test_worktree_no_project:
+            vec!["wok", "-w", "feature-branch"],
+            InferredCommand::GoWorktree {
+                project: None,
+                search: Some("feature-branch".into()),
+                extra_args: vec![],
+                yes: false,
+            },
+
+        test_worktree_no_project_no_search:
+            vec!["wok", "-w"],
+            InferredCommand::GoWorktree {
+                project: None,
+                search: None,
+                extra_args: vec![],
+                yes: false,
+            },
+
+        test_worktree_yes:
+            vec!["wok", "my/project", "-w", "new-branch", "-y"],
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: Some("new-branch".into()),
+                extra_args: vec![],
+                yes: true,
+            },
+
+    }
+
+    #[test]
+    fn test_worktree_with_extra_args() {
+        let args = vec!["wok", "my/project", "-w", "new-branch"];
+        let trailing = vec!["-b".to_string(), "origin/main".to_string()];
+        let matches = WokCli::build().get_matches_from(args);
+        let command = WokCli::infer_command_inner(&matches, trailing).unwrap();
+        assert_eq!(
+            command,
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: Some("new-branch".into()),
+                extra_args: vec!["-b".into(), "origin/main".into()],
+                yes: false,
+            }
+        );
     }
 
     cli_test_error! {
@@ -558,5 +662,20 @@ mod tests {
 
         test_conflict_remove_and_project:
             vec!["wok", "--rm", "myproject", "another-project"]
+
+        test_conflict_worktree_and_list:
+            vec!["wok", "-w", "--list"]
+
+        test_conflict_worktree_and_ff:
+            vec!["wok", "-w", "--ff"]
+
+        test_conflict_worktree_and_setup:
+            vec!["wok", "-w", "--setup"]
+
+        test_conflict_worktree_and_clean:
+            vec!["wok", "-w", "--clean"]
+
+        test_conflict_worktree_and_rm:
+            vec!["wok", "-w", "--rm", "project"]
     }
 }

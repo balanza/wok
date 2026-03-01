@@ -95,7 +95,7 @@ pub fn prepare_shell(
     let items = vec![
         wokrc_file_setup_item(shell, binary_path.clone(), home_dir),
         wokrc_configuration_setup_item(shell, home_dir),
-        autocomplete_file_setup_item(shell, home_dir),
+        autocomplete_file_setup_item(shell, &binary_path, home_dir),
     ];
 
     collect_results(items)
@@ -154,10 +154,11 @@ fn wokrc_file_setup_item(
 
 fn autocomplete_file_setup_item(
     shell: &SupportedShells,
+    binary_path: &str,
     home_dir: &str,
 ) -> Result<ShellSetupItem, Box<dyn std::error::Error>> {
     let autocomplete_file_path = autocomplete_file_path(&shell, home_dir);
-    let autocomplete_content = match compile_autocomplete_script(&shell) {
+    let autocomplete_content = match compile_autocomplete_script(&shell, binary_path) {
         Ok(content) => content,
         Err(e) => {
             return Err(Box::from(format!(
@@ -256,13 +257,23 @@ fn wokrc_file_path(shell: &SupportedShells, home_dir: &str) -> String {
 
 fn compile_autocomplete_script(
     shell: &SupportedShells,
+    binary_path: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let raw = match shell {
         SupportedShells::Zsh => include_str!("../../templates/autocomplete.zsh"),
         SupportedShells::Bash => include_str!("../../templates/autocomplete.bash"),
     };
 
-    let compiled_script: String = compile_template(raw, &[].iter().cloned().collect())?;
+    let compiled_script: String = compile_template(
+        raw,
+        &[(
+            "WOK_BINARY_PATH".to_string(),
+            binary_path.to_string(),
+        )]
+        .iter()
+        .cloned()
+        .collect(),
+    )?;
 
     Ok(compiled_script)
 }
@@ -503,16 +514,20 @@ mod tests {
 
     #[test]
     fn test_compile_autocomplete_script_bash() {
-        let script = compile_autocomplete_script(&SupportedShells::Bash).unwrap();
+        let script =
+            compile_autocomplete_script(&SupportedShells::Bash, "/test/binary").unwrap();
         assert!(script.contains("_wok_completion"));
         assert!(script.contains("complete -F _wok_completion wok"));
+        assert!(script.contains("/test/binary"));
     }
 
     #[test]
     fn test_compile_autocomplete_script_zsh() {
-        let script = compile_autocomplete_script(&SupportedShells::Zsh).unwrap();
+        let script =
+            compile_autocomplete_script(&SupportedShells::Zsh, "/test/binary").unwrap();
         assert!(script.contains("#compdef wok"));
         assert!(script.contains("_wok()"));
+        assert!(script.contains("/test/binary"));
     }
 
     #[test]
