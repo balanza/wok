@@ -148,12 +148,30 @@ impl WokCli {
 
     /// Parse arguments and infer the command
     pub fn parse() -> Result<InferredCommand, String> {
-        let matches = Self::build().get_matches();
-        Self::infer_command(&matches)
+        // Extract trailing args (after --) before clap consumes them
+        let raw_args: Vec<String> = env::args().collect();
+        let trailing: Vec<String> = if let Some(pos) = raw_args.iter().position(|a| a == "--") {
+            raw_args[pos + 1..].to_vec()
+        } else {
+            vec![]
+        };
+
+        // Pass only args before -- to clap
+        let clap_args: Vec<String> = if let Some(pos) = raw_args.iter().position(|a| a == "--") {
+            raw_args[..pos].to_vec()
+        } else {
+            raw_args
+        };
+
+        let matches = Self::build().get_matches_from(clap_args);
+        Self::infer_command_inner(&matches, trailing)
     }
 
     /// Infer the command from parsed arguments
-    fn infer_command(matches: &ArgMatches) -> Result<InferredCommand, String> {
+    fn infer_command_inner(
+        matches: &ArgMatches,
+        trailing: Vec<String>,
+    ) -> Result<InferredCommand, String> {
         // Handle scrape command first (since it can combine with export/import)
         if let Some(scrape_path) = matches.get_one::<String>("scrape") {
             // Scrape cannot be combined with list, ff, or project
@@ -316,7 +334,7 @@ mod tests {
                 fn $name() {
                     let args = $args;
                     let matches = WokCli::build().get_matches_from(args);
-                    let command = WokCli::infer_command(&matches).unwrap();
+                    let command = WokCli::infer_command_inner(&matches, vec![]).unwrap();
                     assert_eq!(
                         command,
                         $command
@@ -336,7 +354,7 @@ mod tests {
 
                     // Either parsing should fail, or inference should fail
                     if let Ok(matches) = match_result {
-                        let result = WokCli::infer_command(&matches);
+                        let result = WokCli::infer_command_inner(&matches, vec![]);
                         assert!(result.is_err(), "Expected inference to fail for args: {:?}", args);
                     }
                     // If parsing failed, that's also acceptable
