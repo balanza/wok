@@ -2,7 +2,7 @@ use std::os::unix::io::AsRawFd;
 use wok::lib::constants::{GOTO_MARKER, MULTIPLE_MATCHES_MARKER};
 use wok::lib::fd::write_to_fd;
 use wok::lib::fuzzy::FuzzySearcher;
-use wok::lib::git::{create_worktree, list_worktrees, WorktreeItem};
+use wok::lib::git::{create_worktree, current_branch, list_worktrees, WorktreeItem};
 use wok::lib::projects::{list_project_items, ProjectItem};
 
 pub fn handle(
@@ -23,15 +23,6 @@ pub fn handle(
 
     match search {
         None => handle_list(&project_path, &worktrees),
-        Some("__root") => {
-            let dest = project_path.to_string_lossy().to_string();
-            let goto_dest = format!("{}{}", GOTO_MARKER, &dest);
-            write_to_fd(3, &goto_dest)?;
-            if is_tty() {
-                println!("{}", &dest);
-            }
-            Ok(())
-        }
         Some(term) => handle_search(&project_path, &worktrees, term, extra_args, yes),
     }
 }
@@ -115,10 +106,15 @@ fn handle_list(
         return Ok(());
     }
 
+    // The root worktree is shown as "* <branch>" so the user can recognise it
+    // among siblings; selecting it cd's back to the project root.
+    let branch = current_branch(project_path)?;
+    let root_label = format!("* {}", branch);
+
     // Always write to FD3 for the shell wrapper menu (no-op if FD3 is not available).
     // Format: "label::/path" — the shell wrapper displays the label and cd's to the path.
     let mut entries: Vec<String> = Vec::with_capacity(worktrees.len() + 1);
-    entries.push(format!("__root::{}", project_path.to_string_lossy()));
+    entries.push(format!("{}::{}", root_label, project_path.to_string_lossy()));
     for wt in worktrees {
         entries.push(format!("{}::{}", wt.name, wt.path.to_string_lossy()));
     }
@@ -127,7 +123,7 @@ fn handle_list(
 
     // Non-TTY context without FD3 (e.g. shell completion): also print names to stdout
     if !is_tty() {
-        println!("__root");
+        println!("{}", root_label);
         for wt in worktrees {
             println!("{}", wt.name);
         }
@@ -143,6 +139,21 @@ fn handle_search(
     extra_args: &[String],
     yes: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // If the term matches the root's current branch, cd to the project root.
+    // Checked before worktree names so a sibling worktree named after the root
+    // branch can never shadow the root navigation.
+    if let Ok(branch) = current_branch(project_path) {
+        if branch == term {
+            let dest = project_path.to_string_lossy().to_string();
+            let goto_dest = format!("{}{}", GOTO_MARKER, &dest);
+            write_to_fd(3, &goto_dest)?;
+            if is_tty() {
+                println!("{}", &dest);
+            }
+            return Ok(());
+        }
+    }
+
     // Exact match only — no fuzzy search
     if let Some(wt) = worktrees.iter().find(|wt| wt.name == term) {
         let dest = wt.path.to_string_lossy().to_string();

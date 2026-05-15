@@ -142,6 +142,34 @@ pub fn parse_worktree_list(output: &str) -> Vec<WorktreeItem> {
     items
 }
 
+/// Get the current branch name of a git repository.
+/// Falls back to the short commit SHA when HEAD is detached.
+pub fn current_branch(project_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let symbolic = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(&["symbolic-ref", "--short", "HEAD"])
+        .output()?;
+
+    if symbolic.status.success() {
+        return Ok(String::from_utf8(symbolic.stdout)?.trim().to_string());
+    }
+
+    // Detached HEAD or unborn branch — try a short SHA
+    let sha = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(&["rev-parse", "--short", "HEAD"])
+        .output()?;
+
+    if !sha.status.success() {
+        let stderr = String::from_utf8_lossy(&sha.stderr);
+        return Err(Box::from(format!("could not determine current branch: {}", stderr)));
+    }
+
+    Ok(String::from_utf8(sha.stdout)?.trim().to_string())
+}
+
 /// List all worktrees for a git project
 pub fn list_worktrees(project_path: &Path) -> Result<Vec<WorktreeItem>, Box<dyn std::error::Error>> {
     let output = Command::new("git")
@@ -214,6 +242,70 @@ fn parse_git_remote(remote_url: &str) -> Result<(String, String), Box<dyn std::e
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn init_repo_with_commit(path: &Path) {
+        Command::new("git").arg("init").current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(&["config", "user.email", "test@example.com"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(&["config", "user.name", "Test"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        std::fs::write(path.join("README"), "x").unwrap();
+        Command::new("git").args(&["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(&["commit", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_current_branch_default() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+
+        let branch = current_branch(temp_dir.path()).unwrap();
+        // Default branch may be `main` or `master` depending on git config
+        assert!(branch == "main" || branch == "master", "unexpected branch: {}", branch);
+    }
+
+    #[test]
+    fn test_current_branch_named() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        Command::new("git")
+            .args(&["checkout", "-b", "feature-x"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let branch = current_branch(temp_dir.path()).unwrap();
+        assert_eq!(branch, "feature-x");
+    }
+
+    #[test]
+    fn test_current_branch_detached_returns_sha() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        Command::new("git")
+            .args(&["checkout", "--detach", "HEAD"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let result = current_branch(temp_dir.path()).unwrap();
+        // Short SHA is hex, typically 7 chars
+        assert!(
+            result.len() >= 4 && result.chars().all(|c| c.is_ascii_hexdigit()),
+            "expected short SHA, got: {}",
+            result
+        );
+    }
 
     #[test]
     fn test_parse_git_remote_https() {
