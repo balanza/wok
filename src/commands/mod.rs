@@ -5,6 +5,7 @@ pub mod export;
 pub mod ff;
 pub mod go;
 pub mod go_worktree;
+pub mod go_worktree_root;
 pub mod import;
 pub mod list;
 pub mod remove;

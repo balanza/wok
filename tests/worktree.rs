@@ -105,6 +105,64 @@ fn test_worktree_search_by_root_branch_does_not_prompt() {
 }
 
 #[test]
+fn test_worktree_root_with_project_arg() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("-W")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn test_worktree_root_resolves_from_cwd() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+
+    // Run from inside the worktree — -W should resolve back to the project root
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .current_dir(wt_path.path())
+        .arg("-W")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn test_worktree_root_outside_workspace_errors() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    // Outside the workspace and no project arg → cannot determine project
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .current_dir(temp_dir.path())
+        .arg("-W")
+        .assert()
+        .failure();
+}
+
+#[test]
 fn test_worktree_search_existing_worktree_succeeds() {
     let temp_dir = assert_fs::TempDir::new().unwrap();
     let workspace = temp_dir.child("workspace");

@@ -27,7 +27,7 @@ pub fn handle(
     }
 }
 
-fn resolve_project_path(
+pub fn resolve_project_path(
     workspace: &str,
     project: Option<&str>,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {

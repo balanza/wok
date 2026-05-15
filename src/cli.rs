@@ -41,6 +41,8 @@ pub enum InferredCommand {
         extra_args: Vec<String>,
         yes: bool,
     },
+    /// Go to the project root (main checkout)
+    GoWorktreeRoot { project: Option<String> },
 }
 
 /// CLI argument parser with inference logic
@@ -144,7 +146,15 @@ impl WokCli {
                     .value_name("WORKTREE")
                     .num_args(0..=1)
                     .default_missing_value("")
-                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "scrape", "setup", "clean", "rm", "manual"]),
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "scrape", "setup", "clean", "rm", "manual", "worktree-root"]),
+            )
+            .arg(
+                Arg::new("worktree-root")
+                    .short('W')
+                    .long("worktree-root")
+                    .help("Navigate to the project root (the main checkout)")
+                    .action(ArgAction::SetTrue)
+                    .conflicts_with_all(&["worktree", "list", "fast-forward", "export", "import", "scrape", "setup", "clean", "rm", "manual"]),
             )
             .arg(
                 Arg::new("yes")
@@ -231,6 +241,12 @@ impl WokCli {
                 export_mode,
                 import_mode,
             });
+        }
+
+        // Handle worktree-root command (-W)
+        if matches.get_flag("worktree-root") {
+            let project = matches.get_one::<String>("project").cloned();
+            return Ok(InferredCommand::GoWorktreeRoot { project });
         }
 
         // Handle worktree command
@@ -583,6 +599,16 @@ mod tests {
                 yes: true,
             },
 
+        test_worktree_root_no_project:
+            vec!["wok", "-W"],
+            InferredCommand::GoWorktreeRoot { project: None },
+
+        test_worktree_root_with_project:
+            vec!["wok", "my/project", "-W"],
+            InferredCommand::GoWorktreeRoot {
+                project: Some("my/project".into()),
+            },
+
     }
 
     #[test]
@@ -677,5 +703,14 @@ mod tests {
 
         test_conflict_worktree_and_rm:
             vec!["wok", "-w", "--rm", "project"]
+
+        test_conflict_worktree_root_and_worktree:
+            vec!["wok", "-W", "-w"]
+
+        test_conflict_worktree_root_and_list:
+            vec!["wok", "-W", "--list"]
+
+        test_conflict_worktree_root_and_setup:
+            vec!["wok", "-W", "--setup"]
     }
 }

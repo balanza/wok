@@ -42,6 +42,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &extra_args,
             yes,
         ),
+        cli::InferredCommand::GoWorktreeRoot { project } => {
+            commands::go_worktree_root::handle(&workspace, project.as_deref())
+        }
     };
 }
 
