@@ -43,6 +43,12 @@ pub enum InferredCommand {
     },
     /// Go to the project root (main checkout)
     GoWorktreeRoot { project: Option<String> },
+    /// Remove a worktree from a project
+    RemoveWorktree {
+        project: Option<String>,
+        name: String,
+        yes: bool,
+    },
 }
 
 /// CLI argument parser with inference logic
@@ -119,10 +125,11 @@ impl WokCli {
             .arg(
                 Arg::new("rm")
                     .long("rm")
-                    .help("Remove a project from the workspace")
-                    .value_name("PROJECT")
-                    .num_args(1)
-                    .conflicts_with_all(&["setup", "clean", "list", "fast-forward", "export", "import", "project", "scrape"]),
+                    .help("Remove a project, or a worktree when combined with -w")
+                    .value_name("NAME")
+                    .num_args(0..=1)
+                    .default_missing_value("")
+                    .conflicts_with_all(&["setup", "clean", "list", "fast-forward", "export", "import", "scrape"]),
             )
             .arg(
                 Arg::new("shell")
@@ -146,7 +153,7 @@ impl WokCli {
                     .value_name("WORKTREE")
                     .num_args(0..=1)
                     .default_missing_value("")
-                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "scrape", "setup", "clean", "rm", "manual", "worktree-root"]),
+                    .conflicts_with_all(&["list", "fast-forward", "export", "import", "scrape", "setup", "clean", "manual", "worktree-root"]),
             )
             .arg(
                 Arg::new("worktree-root")
@@ -252,12 +259,37 @@ impl WokCli {
         // Handle worktree command
         if matches.contains_id("worktree") {
             let worktree_val = matches.get_one::<String>("worktree").cloned();
+            let project = matches.get_one::<String>("project").cloned();
+            let yes = matches.get_flag("yes");
+
+            // Combined with --rm → remove a worktree. The name comes from
+            // whichever of -w / --rm carries the value (clap order-independent).
+            if matches.contains_id("rm") {
+                let w_val = worktree_val.as_deref().unwrap_or("");
+                let rm_val = matches.get_one::<String>("rm").map(|s| s.as_str()).unwrap_or("");
+                let name = match (w_val.is_empty(), rm_val.is_empty()) {
+                    (true, true) => {
+                        return Err(
+                            "Missing worktree name (provide via -w <name> or --rm <name>)"
+                                .to_string(),
+                        )
+                    }
+                    (false, true) => w_val.to_string(),
+                    (true, false) => rm_val.to_string(),
+                    (false, false) => {
+                        return Err(
+                            "Specify the worktree name only once (via -w or --rm, not both)"
+                                .to_string(),
+                        )
+                    }
+                };
+                return Ok(InferredCommand::RemoveWorktree { project, name, yes });
+            }
+
             let search = match worktree_val.as_deref() {
                 Some("") | None => None,
                 Some(v) => Some(v.to_string()),
             };
-            let project = matches.get_one::<String>("project").cloned();
-            let yes = matches.get_flag("yes");
             return Ok(InferredCommand::GoWorktree {
                 project,
                 search,
@@ -326,6 +358,26 @@ impl WokCli {
             });
         }
 
+        // Check if remove options are provided (legacy --rm <project>; the
+        // -w + --rm combination is handled in the worktree block above).
+        // Checked before the positional branch so `wok myproj --rm` is rejected
+        // instead of silently routed to Go("myproj").
+        if matches.contains_id("rm") {
+            let rm_val = matches.get_one::<String>("rm").map(|s| s.as_str()).unwrap_or("");
+            if rm_val.is_empty() {
+                return Err(
+                    "--rm requires a project name (or combine with -w to remove a worktree)"
+                        .to_string(),
+                );
+            }
+            if matches.contains_id("project") {
+                return Err("Cannot use --rm with a positional project argument".to_string());
+            }
+            return Ok(InferredCommand::Remove {
+                search: rm_val.to_string(),
+            });
+        }
+
         // Handle positional argument
         if let Some(positional) = matches.get_one::<String>("project") {
             if Self::is_url(positional) {
@@ -343,13 +395,6 @@ impl WokCli {
         if matches.get_flag("clean") {
             return Ok(InferredCommand::Clean {
                 shell: matches.get_one::<String>("shell").cloned(),
-            });
-        }
-
-        // Check if remove options are provided
-        if let Some(search) = matches.get_one::<String>("rm") {
-            return Ok(InferredCommand::Remove {
-                search: search.clone(),
             });
         }
 
@@ -609,6 +654,38 @@ mod tests {
                 project: Some("my/project".into()),
             },
 
+        test_remove_worktree_via_w_value:
+            vec!["wok", "-w", "feature-x", "--rm"],
+            InferredCommand::RemoveWorktree {
+                project: None,
+                name: "feature-x".into(),
+                yes: false,
+            },
+
+        test_remove_worktree_via_rm_value:
+            vec!["wok", "--rm", "feature-x", "-w"],
+            InferredCommand::RemoveWorktree {
+                project: None,
+                name: "feature-x".into(),
+                yes: false,
+            },
+
+        test_remove_worktree_with_project:
+            vec!["wok", "my/project", "-w", "feature-x", "--rm"],
+            InferredCommand::RemoveWorktree {
+                project: Some("my/project".into()),
+                name: "feature-x".into(),
+                yes: false,
+            },
+
+        test_remove_worktree_with_yes:
+            vec!["wok", "-w", "feature-x", "--rm", "-y"],
+            InferredCommand::RemoveWorktree {
+                project: None,
+                name: "feature-x".into(),
+                yes: true,
+            },
+
     }
 
     #[test]
@@ -701,8 +778,17 @@ mod tests {
         test_conflict_worktree_and_clean:
             vec!["wok", "-w", "--clean"]
 
-        test_conflict_worktree_and_rm:
-            vec!["wok", "-w", "--rm", "project"]
+        test_remove_worktree_missing_name:
+            vec!["wok", "-w", "--rm"]
+
+        test_remove_worktree_double_name:
+            vec!["wok", "-w", "foo", "--rm", "bar"]
+
+        test_rm_alone_with_positional_errors:
+            vec!["wok", "myproj", "--rm", "other"]
+
+        test_rm_bare_alone_errors:
+            vec!["wok", "--rm"]
 
         test_conflict_worktree_root_and_worktree:
             vec!["wok", "-W", "-w"]

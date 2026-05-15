@@ -9,5 +9,6 @@ pub mod go_worktree_root;
 pub mod import;
 pub mod list;
 pub mod remove;
+pub mod remove_worktree;
 pub mod scrape;
 pub mod setup;

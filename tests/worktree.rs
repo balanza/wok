@@ -163,6 +163,134 @@ fn test_worktree_root_outside_workspace_errors() {
 }
 
 #[test]
+fn test_remove_clean_worktree() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    assert!(wt_path.exists());
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("-w")
+        .arg("feature-x")
+        .arg("--rm")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed worktree"));
+
+    assert!(!wt_path.exists());
+}
+
+#[test]
+fn test_remove_worktree_via_rm_value() {
+    // Same removal but with the name on --rm and -w bare
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("--rm")
+        .arg("feature-x")
+        .arg("-w")
+        .assert()
+        .success();
+
+    assert!(!wt_path.exists());
+}
+
+#[test]
+fn test_remove_dirty_worktree_without_yes_declines() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    fs::write(wt_path.path().join("untracked.txt"), "x").unwrap();
+
+    // assert_cmd closes stdin → read_line returns EOF → empty answer → declined
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("-w")
+        .arg("feature-x")
+        .arg("--rm")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("uncommitted"));
+
+    assert!(wt_path.exists(), "dirty worktree should not be removed without confirmation");
+}
+
+#[test]
+fn test_remove_dirty_worktree_with_yes_removes() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    fs::write(wt_path.path().join("untracked.txt"), "x").unwrap();
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("-w")
+        .arg("feature-x")
+        .arg("--rm")
+        .arg("-y")
+        .assert()
+        .success();
+
+    assert!(!wt_path.exists());
+}
+
+#[test]
+fn test_remove_nonexistent_worktree_errors() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .arg("org/proj")
+        .arg("-w")
+        .arg("nope")
+        .arg("--rm")
+        .assert()
+        .failure();
+}
+
+#[test]
 fn test_worktree_search_existing_worktree_succeeds() {
     let temp_dir = assert_fs::TempDir::new().unwrap();
     let workspace = temp_dir.child("workspace");

@@ -187,6 +187,45 @@ pub fn list_worktrees(project_path: &Path) -> Result<Vec<WorktreeItem>, Box<dyn 
     Ok(parse_worktree_list(&stdout))
 }
 
+/// Check whether a worktree has uncommitted or untracked changes.
+/// Returns true if `git status --porcelain` produces any output.
+pub fn is_worktree_dirty(worktree_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["status", "--porcelain"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git status failed: {}", stderr)));
+    }
+
+    Ok(!output.stdout.is_empty())
+}
+
+/// Remove a worktree from a project. With `force = true`, passes `--force` to
+/// `git worktree remove` so dirty worktrees can be deleted.
+pub fn remove_worktree(
+    project_path: &Path,
+    worktree_path: &Path,
+    force: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(project_path).args(&["worktree", "remove"]);
+    if force {
+        cmd.arg("--force");
+    }
+    cmd.arg(worktree_path);
+
+    let output = cmd.output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git worktree remove failed: {}", stderr)));
+    }
+    Ok(())
+}
+
 /// Create a new worktree for a git project.
 /// The worktree is created at `{org_path}/.worktrees/{project_name}/{worktree_name}`,
 /// where `org_path` is the parent of `project_path`.
@@ -286,6 +325,95 @@ mod tests {
 
         let branch = current_branch(temp_dir.path()).unwrap();
         assert_eq!(branch, "feature-x");
+    }
+
+    #[test]
+    fn test_is_worktree_dirty_clean() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+
+        assert_eq!(is_worktree_dirty(temp_dir.path()).unwrap(), false);
+    }
+
+    #[test]
+    fn test_is_worktree_dirty_with_untracked() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        std::fs::write(temp_dir.path().join("untracked.txt"), "x").unwrap();
+
+        assert_eq!(is_worktree_dirty(temp_dir.path()).unwrap(), true);
+    }
+
+    #[test]
+    fn test_is_worktree_dirty_with_modified() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        std::fs::write(temp_dir.path().join("README"), "modified").unwrap();
+
+        assert_eq!(is_worktree_dirty(temp_dir.path()).unwrap(), true);
+    }
+
+    #[test]
+    fn test_remove_worktree_clean() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("proj");
+        std::fs::create_dir(&project_path).unwrap();
+        init_repo_with_commit(&project_path);
+
+        let wt_path = temp_dir.path().join("wt");
+        Command::new("git")
+            .arg("-C")
+            .arg(&project_path)
+            .args(&["worktree", "add", "-b", "feature"])
+            .arg(&wt_path)
+            .output()
+            .unwrap();
+        assert!(wt_path.exists());
+
+        remove_worktree(&project_path, &wt_path, false).unwrap();
+        assert!(!wt_path.exists());
+    }
+
+    #[test]
+    fn test_remove_worktree_dirty_without_force_fails() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("proj");
+        std::fs::create_dir(&project_path).unwrap();
+        init_repo_with_commit(&project_path);
+
+        let wt_path = temp_dir.path().join("wt");
+        Command::new("git")
+            .arg("-C")
+            .arg(&project_path)
+            .args(&["worktree", "add", "-b", "feature"])
+            .arg(&wt_path)
+            .output()
+            .unwrap();
+        std::fs::write(wt_path.join("untracked.txt"), "x").unwrap();
+
+        assert!(remove_worktree(&project_path, &wt_path, false).is_err());
+        assert!(wt_path.exists());
+    }
+
+    #[test]
+    fn test_remove_worktree_dirty_with_force_succeeds() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("proj");
+        std::fs::create_dir(&project_path).unwrap();
+        init_repo_with_commit(&project_path);
+
+        let wt_path = temp_dir.path().join("wt");
+        Command::new("git")
+            .arg("-C")
+            .arg(&project_path)
+            .args(&["worktree", "add", "-b", "feature"])
+            .arg(&wt_path)
+            .output()
+            .unwrap();
+        std::fs::write(wt_path.join("untracked.txt"), "x").unwrap();
+
+        remove_worktree(&project_path, &wt_path, true).unwrap();
+        assert!(!wt_path.exists());
     }
 
     #[test]
