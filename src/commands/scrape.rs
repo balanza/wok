@@ -95,9 +95,7 @@ fn get_timestamp() -> Result<String, Box<dyn std::error::Error>> {
         .to_string())
 }
 
-fn export_to_stdout(
-    scrape_data: &WorkspaceScrape,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn export_to_stdout(scrape_data: &WorkspaceScrape) -> Result<(), Box<dyn std::error::Error>> {
     let json = serde_json::to_string_pretty(&scrape_data)?;
     println!("{}", json);
     Ok(())
@@ -219,9 +217,7 @@ fn show_interactive_prompt(
 
 fn generate_export_filename() -> Result<String, Box<dyn std::error::Error>> {
     // Get current timestamp in a compact format
-    let timestamp_output = Command::new("date")
-        .arg("+%Y%m%d-%H%M%S")
-        .output()?;
+    let timestamp_output = Command::new("date").arg("+%Y%m%d-%H%M%S").output()?;
 
     let timestamp = String::from_utf8(timestamp_output.stdout)?
         .trim()
@@ -233,9 +229,7 @@ fn generate_export_filename() -> Result<String, Box<dyn std::error::Error>> {
         .arg("head -c 2 /dev/urandom | xxd -p")
         .output()?;
 
-    let random_hex = String::from_utf8(random_output.stdout)?
-        .trim()
-        .to_string();
+    let random_hex = String::from_utf8(random_output.stdout)?.trim().to_string();
 
     Ok(format!("wok-scrape-{}-{}.json", timestamp, random_hex))
 }

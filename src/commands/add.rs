@@ -46,7 +46,10 @@ pub fn handle(workspace: &str, repo_url: &str) -> Result<(), Box<dyn std::error:
 
 fn ensure_workspace_exists(workspace: &str) -> Result<(), Box<dyn std::error::Error>> {
     if !Path::new(workspace).exists() {
-        print!("Workspace directory '{}' does not exist. Create it? (y/n): ", workspace);
+        print!(
+            "Workspace directory '{}' does not exist. Create it? (y/n): ",
+            workspace
+        );
         io::stdout().flush()?;
 
         let mut input = String::new();

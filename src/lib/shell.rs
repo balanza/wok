@@ -266,13 +266,10 @@ fn compile_autocomplete_script(
 
     let compiled_script: String = compile_template(
         raw,
-        &[(
-            "WOK_BINARY_PATH".to_string(),
-            binary_path.to_string(),
-        )]
-        .iter()
-        .cloned()
-        .collect(),
+        &[("WOK_BINARY_PATH".to_string(), binary_path.to_string())]
+            .iter()
+            .cloned()
+            .collect(),
     )?;
 
     Ok(compiled_script)
@@ -510,8 +507,7 @@ mod tests {
 
     #[test]
     fn test_compile_autocomplete_script_bash() {
-        let script =
-            compile_autocomplete_script(&SupportedShells::Bash, "/test/binary").unwrap();
+        let script = compile_autocomplete_script(&SupportedShells::Bash, "/test/binary").unwrap();
         assert!(script.contains("_wok_completion"));
         assert!(script.contains("complete -F _wok_completion wok"));
         assert!(script.contains("/test/binary"));
@@ -519,8 +515,7 @@ mod tests {
 
     #[test]
     fn test_compile_autocomplete_script_zsh() {
-        let script =
-            compile_autocomplete_script(&SupportedShells::Zsh, "/test/binary").unwrap();
+        let script = compile_autocomplete_script(&SupportedShells::Zsh, "/test/binary").unwrap();
         assert!(script.contains("#compdef wok"));
         assert!(script.contains("_wok()"));
         assert!(script.contains("/test/binary"));

@@ -72,7 +72,8 @@ pub fn handle(workspace: &str, input: &str) -> Result<(), Box<dyn std::error::Er
         fs::create_dir_all(&org_dir)?;
 
         // Clone the repository
-        let spinner = spinner::Spinner::new(format!("Cloning {}/{}", project.organization, project.name));
+        let spinner =
+            spinner::Spinner::new(format!("Cloning {}/{}", project.organization, project.name));
 
         match Command::new("git")
             .arg("clone")
@@ -91,7 +92,10 @@ pub fn handle(workspace: &str, input: &str) -> Result<(), Box<dyn std::error::Er
                 failed += 1;
             }
             Err(e) => {
-                spinner.error(format!("✗ {}/{} ({})", project.organization, project.name, e));
+                spinner.error(format!(
+                    "✗ {}/{} ({})",
+                    project.organization, project.name, e
+                ));
                 failed += 1;
             }
         }
