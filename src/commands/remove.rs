@@ -7,7 +7,7 @@ pub fn handle(workspace: &str, project_spec: &str) -> Result<(), Box<dyn std::er
     let parts: Vec<&str> = project_spec.split('/').collect();
     if parts.len() != 2 {
         return Err(Box::from(
-            "Project must be specified in the format: org/project"
+            "Project must be specified in the format: org/project",
         ));
     }
 
@@ -16,7 +16,7 @@ pub fn handle(workspace: &str, project_spec: &str) -> Result<(), Box<dyn std::er
 
     if organization.is_empty() || project_name.is_empty() {
         return Err(Box::from(
-            "Project must be specified in the format: org/project"
+            "Project must be specified in the format: org/project",
         ));
     }
 
@@ -48,7 +48,10 @@ pub fn handle(workspace: &str, project_spec: &str) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-fn validate_project_path(workspace: &str, project_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn validate_project_path(
+    workspace: &str,
+    project_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let project_path_obj = std::path::Path::new(project_path);
     let workspace_path = std::path::Path::new(workspace);
 
@@ -60,13 +63,16 @@ fn validate_project_path(workspace: &str, project_path: &str) -> Result<(), Box<
     // Check if directory exists
     if !project_path_obj.exists() {
         return Err(Box::from(
-            "Project not found. Project must be specified in the format: org/project"
+            "Project not found. Project must be specified in the format: org/project",
         ));
     }
 
     // Check if it's actually a directory
     if !project_path_obj.is_dir() {
-        return Err(Box::from(format!("Path is not a directory: {}", project_path)));
+        return Err(Box::from(format!(
+            "Path is not a directory: {}",
+            project_path
+        )));
     }
 
     // Check if it's a git repository
@@ -79,7 +85,7 @@ fn validate_project_path(workspace: &str, project_path: &str) -> Result<(), Box<
     if let Ok(current_dir) = env::current_dir() {
         if current_dir.starts_with(project_path_obj) {
             return Err(Box::from(
-                "Cannot remove current directory. Please navigate elsewhere first."
+                "Cannot remove current directory. Please navigate elsewhere first.",
             ));
         }
     }

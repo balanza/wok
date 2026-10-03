@@ -205,7 +205,9 @@ fn test_import_from_file() {
         .current_dir(target_workspace.child("org1/project1").path())
         .output()
         .unwrap();
-    let remote_url = String::from_utf8_lossy(&project1_remote.stdout).trim().to_string();
+    let remote_url = String::from_utf8_lossy(&project1_remote.stdout)
+        .trim()
+        .to_string();
     assert!(remote_url.contains("bare_repos/project1.git"));
 }
 
@@ -231,8 +233,8 @@ fn test_import_from_stdin() {
     target_workspace.create_dir_all().unwrap();
 
     // Import to target workspace via stdin using piped_stdin trait
-    use std::process::Stdio;
     use std::io::Write;
+    use std::process::Stdio;
 
     let mut cmd = Command::cargo_bin("wok").unwrap();
     cmd.env("WOK_SPACE", target_workspace.path())
@@ -350,9 +352,7 @@ fn test_export_import_roundtrip() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|item| {
-            item["remote"].as_str().unwrap_or("") != ""
-        })
+        .filter(|item| item["remote"].as_str().unwrap_or("") != "")
         .cloned()
         .collect::<Vec<_>>();
 
