@@ -40,6 +40,8 @@ pub enum InferredCommand {
         search: Option<String>,
         extra_args: Vec<String>,
         yes: bool,
+        /// Carry uncommitted changes (tracked and untracked) to the destination
+        take: bool,
     },
     /// Go to the project root (main checkout)
     GoWorktreeRoot { project: Option<String> },
@@ -172,6 +174,15 @@ impl WokCli {
                     .requires("worktree"),
             )
             .arg(
+                Arg::new("take")
+                    .short('T')
+                    .long("take")
+                    .help("Carry uncommitted changes (tracked and untracked) to the destination worktree")
+                    .action(ArgAction::SetTrue)
+                    .requires("worktree")
+                    .conflicts_with_all(&["rm"]),
+            )
+            .arg(
                 Arg::new("project")
                     .value_name("PROJECT")
                     .help("URL to add or project to navigate to")
@@ -261,12 +272,16 @@ impl WokCli {
             let worktree_val = matches.get_one::<String>("worktree").cloned();
             let project = matches.get_one::<String>("project").cloned();
             let yes = matches.get_flag("yes");
+            let take = matches.get_flag("take");
 
             // Combined with --rm → remove a worktree. The name comes from
             // whichever of -w / --rm carries the value (clap order-independent).
             if matches.contains_id("rm") {
                 let w_val = worktree_val.as_deref().unwrap_or("");
-                let rm_val = matches.get_one::<String>("rm").map(|s| s.as_str()).unwrap_or("");
+                let rm_val = matches
+                    .get_one::<String>("rm")
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 let name = match (w_val.is_empty(), rm_val.is_empty()) {
                     (true, true) => {
                         return Err(
@@ -290,11 +305,18 @@ impl WokCli {
                 Some("") | None => None,
                 Some(v) => Some(v.to_string()),
             };
+
+            // --take needs an explicit destination: the selection menu has none
+            if take && search.is_none() {
+                return Err("--take requires a worktree destination: wok -w <name> -T".to_string());
+            }
+
             return Ok(InferredCommand::GoWorktree {
                 project,
                 search,
                 extra_args: trailing,
                 yes,
+                take,
             });
         }
 
@@ -363,7 +385,10 @@ impl WokCli {
         // Checked before the positional branch so `wok myproj --rm` is rejected
         // instead of silently routed to Go("myproj").
         if matches.contains_id("rm") {
-            let rm_val = matches.get_one::<String>("rm").map(|s| s.as_str()).unwrap_or("");
+            let rm_val = matches
+                .get_one::<String>("rm")
+                .map(|s| s.as_str())
+                .unwrap_or("");
             if rm_val.is_empty() {
                 return Err(
                     "--rm requires a project name (or combine with -w to remove a worktree)"
@@ -606,6 +631,7 @@ mod tests {
                 search: None,
                 extra_args: vec![],
                 yes: false,
+                take: false,
             },
 
         test_worktree_search:
@@ -615,6 +641,7 @@ mod tests {
                 search: Some("feature-branch".into()),
                 extra_args: vec![],
                 yes: false,
+                take: false,
             },
 
         test_worktree_no_project:
@@ -624,6 +651,7 @@ mod tests {
                 search: Some("feature-branch".into()),
                 extra_args: vec![],
                 yes: false,
+                take: false,
             },
 
         test_worktree_no_project_no_search:
@@ -633,6 +661,7 @@ mod tests {
                 search: None,
                 extra_args: vec![],
                 yes: false,
+                take: false,
             },
 
         test_worktree_yes:
@@ -642,6 +671,37 @@ mod tests {
                 search: Some("new-branch".into()),
                 extra_args: vec![],
                 yes: true,
+                take: false,
+            },
+
+        test_worktree_take_short:
+            vec!["wok", "my/project", "-w", "feature-x", "-T"],
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: Some("feature-x".into()),
+                extra_args: vec![],
+                yes: false,
+                take: true,
+            },
+
+        test_worktree_take_long:
+            vec!["wok", "-w", "feature-x", "--take"],
+            InferredCommand::GoWorktree {
+                project: None,
+                search: Some("feature-x".into()),
+                extra_args: vec![],
+                yes: false,
+                take: true,
+            },
+
+        test_worktree_take_with_yes:
+            vec!["wok", "my/project", "-w", "new-branch", "-T", "-y"],
+            InferredCommand::GoWorktree {
+                project: Some("my/project".into()),
+                search: Some("new-branch".into()),
+                extra_args: vec![],
+                yes: true,
+                take: true,
             },
 
         test_worktree_root_no_project:
@@ -701,6 +761,7 @@ mod tests {
                 search: Some("new-branch".into()),
                 extra_args: vec!["-b".into(), "origin/main".into()],
                 yes: false,
+                take: false,
             }
         );
     }
@@ -798,5 +859,14 @@ mod tests {
 
         test_conflict_worktree_root_and_setup:
             vec!["wok", "-W", "--setup"]
+
+        test_conflict_take_and_rm:
+            vec!["wok", "-w", "feature-x", "-T", "--rm"]
+
+        test_take_without_worktree_flag:
+            vec!["wok", "-T"]
+
+        test_take_without_worktree_value:
+            vec!["wok", "my/project", "-w", "-T"]
     }
 }
