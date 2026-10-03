@@ -313,7 +313,10 @@ fn check_file_contains_status(
 ) -> Result<ShellSetupItemStatus, Box<dyn std::error::Error>> {
     let path = std::path::Path::new(file_path);
     if !path.exists() {
-        return Err(Box::from(format!("File not found: {}", file_path)));
+        // The rc file will be created by the append-on-install path, so a
+        // missing file is a pending (Todo) setup, not an error. Without this,
+        // `wok --setup` fails on a fresh home that has no shell rc yet.
+        return Ok(ShellSetupItemStatus::Todo);
     }
 
     let actual = std::fs::read_to_string(file_path).map_err(|e| -> Box<dyn std::error::Error> {
@@ -436,9 +439,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("nonexistent.txt");
 
-        let result = check_file_contains_status(file_path.to_str().unwrap(), "content");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("File not found"));
+        // A missing rc file is a pending setup, not an error: install appends
+        // and creates the file.
+        let status = check_file_contains_status(file_path.to_str().unwrap(), "content").unwrap();
+        assert_eq!(status, ShellSetupItemStatus::Todo);
     }
 
     #[test]
