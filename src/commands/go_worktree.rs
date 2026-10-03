@@ -2,7 +2,10 @@ use std::os::unix::io::AsRawFd;
 use wok::lib::constants::{GOTO_MARKER, MULTIPLE_MATCHES_MARKER};
 use wok::lib::fd::write_to_fd;
 use wok::lib::fuzzy::FuzzySearcher;
-use wok::lib::git::{create_worktree, current_branch, list_worktrees, WorktreeItem};
+use wok::lib::git::{
+    create_worktree, current_branch, is_worktree_dirty, list_worktrees, stash_all, stash_pop,
+    WorktreeItem,
+};
 use wok::lib::projects::{list_project_items, ProjectItem};
 
 pub fn handle(
@@ -11,19 +14,18 @@ pub fn handle(
     search: Option<&str>,
     extra_args: &[String],
     yes: bool,
+    take: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let project_path = resolve_project_path(workspace, project)?;
     let canonical_project = project_path.canonicalize().unwrap_or(project_path.clone());
     let worktrees: Vec<WorktreeItem> = list_worktrees(&project_path)?
         .into_iter()
-        .filter(|wt| {
-            wt.path.canonicalize().unwrap_or(wt.path.clone()) != canonical_project
-        })
+        .filter(|wt| wt.path.canonicalize().unwrap_or(wt.path.clone()) != canonical_project)
         .collect();
 
     match search {
         None => handle_list(&project_path, &worktrees),
-        Some(term) => handle_search(&project_path, &worktrees, term, extra_args, yes),
+        Some(term) => handle_search(&project_path, &worktrees, term, extra_args, yes, take),
     }
 }
 
@@ -114,7 +116,11 @@ fn handle_list(
     // Always write to FD3 for the shell wrapper menu (no-op if FD3 is not available).
     // Format: "label::/path" — the shell wrapper displays the label and cd's to the path.
     let mut entries: Vec<String> = Vec::with_capacity(worktrees.len() + 1);
-    entries.push(format!("{}::{}", root_label, project_path.to_string_lossy()));
+    entries.push(format!(
+        "{}::{}",
+        root_label,
+        project_path.to_string_lossy()
+    ));
     for wt in worktrees {
         entries.push(format!("{}::{}", wt.name, wt.path.to_string_lossy()));
     }
@@ -138,12 +144,16 @@ fn handle_search(
     term: &str,
     extra_args: &[String],
     yes: bool,
+    take: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // If the term matches the root's current branch, cd to the project root.
     // Checked before worktree names so a sibling worktree named after the root
     // branch can never shadow the root navigation.
     if let Ok(branch) = current_branch(project_path) {
         if branch == term {
+            if take {
+                carry_changes_to(project_path)?;
+            }
             let dest = project_path.to_string_lossy().to_string();
             let goto_dest = format!("{}{}", GOTO_MARKER, &dest);
             write_to_fd(3, &goto_dest)?;
@@ -156,6 +166,9 @@ fn handle_search(
 
     // Exact match only — no fuzzy search
     if let Some(wt) = worktrees.iter().find(|wt| wt.name == term) {
+        if take {
+            carry_changes_to(&wt.path)?;
+        }
         let dest = wt.path.to_string_lossy().to_string();
         let goto_dest = format!("{}{}", GOTO_MARKER, &dest);
         write_to_fd(3, &goto_dest)?;
@@ -177,10 +190,49 @@ fn handle_search(
     }
 
     let new_path = create_worktree(project_path, term, extra_args)?;
+    if take {
+        // A freshly created worktree is clean by construction
+        carry_changes_to(&new_path)?;
+    }
     let goto_dest = format!("{}{}", GOTO_MARKER, new_path.to_string_lossy());
     write_to_fd(3, &goto_dest)?;
     if is_tty() {
         println!("{}", new_path.to_string_lossy());
+    }
+    Ok(())
+}
+
+/// Carry uncommitted changes from the current directory to the destination
+/// worktree, via the repo-global stash: stash in the directory the user is
+/// leaving, pop into the directory they are entering (git -C points git at
+/// either path), all before the FD3 goto is emitted. No-op when the current
+/// directory is clean; refuses when the destination is dirty so a pop can
+/// never conflict: --take moves changes, it never merges them. A failed pop
+/// keeps the stash entry, so nothing can be lost either way.
+fn carry_changes_to(dest: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let cwd = std::env::current_dir()?;
+    if !is_worktree_dirty(&cwd).unwrap_or(false) {
+        return Ok(());
+    }
+    if is_worktree_dirty(dest)? {
+        return Err(Box::from(format!(
+            "Cannot --take: destination '{}' has uncommitted or untracked changes.",
+            dest.to_string_lossy()
+        )));
+    }
+
+    stash_all(&cwd)?;
+    if let Err(err) = stash_pop(dest) {
+        return Err(Box::from(format!(
+            "{}. Your changes are safe in the stash entry (git stash list).",
+            err
+        )));
+    }
+    if is_tty() {
+        println!(
+            "Carried uncommitted changes to '{}'.",
+            dest.to_string_lossy()
+        );
     }
     Ok(())
 }
@@ -206,4 +258,3 @@ fn fuzzy_search_projects(list: &[ProjectItem], search: &str) -> Vec<ProjectItem>
         })
         .collect()
 }
-

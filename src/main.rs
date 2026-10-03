@@ -21,9 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::InferredCommand::Import { input } => commands::import::handle(&workspace, &input),
         cli::InferredCommand::Setup { shell, manual } => commands::setup::handle(&shell, manual),
         cli::InferredCommand::Clean { shell } => commands::clean::handle(&shell),
-        cli::InferredCommand::Remove { search } => {
-            commands::remove::handle(&workspace, &search)
-        }
+        cli::InferredCommand::Remove { search } => commands::remove::handle(&workspace, &search),
         cli::InferredCommand::Scrape {
             path,
             org,
@@ -35,12 +33,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             search,
             extra_args,
             yes,
+            take,
         } => commands::go_worktree::handle(
             &workspace,
             project.as_deref(),
             search.as_deref(),
             &extra_args,
             yes,
+            take,
         ),
         cli::InferredCommand::GoWorktreeRoot { project } => {
             commands::go_worktree_root::handle(&workspace, project.as_deref())

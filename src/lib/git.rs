@@ -12,7 +12,9 @@ pub struct DiscoveredRepo {
 }
 
 /// Recursively discover git repositories in a directory
-pub fn discover_repositories(root_path: &Path) -> Result<Vec<DiscoveredRepo>, Box<dyn std::error::Error>> {
+pub fn discover_repositories(
+    root_path: &Path,
+) -> Result<Vec<DiscoveredRepo>, Box<dyn std::error::Error>> {
     let mut repos = Vec::new();
     discover_repositories_recursive(root_path, &mut repos)?;
     Ok(repos)
@@ -58,7 +60,9 @@ fn discover_repositories_recursive(
 }
 
 /// Extract repository information from a git directory
-fn extract_repo_info(repo_path: &Path) -> Result<Option<DiscoveredRepo>, Box<dyn std::error::Error>> {
+fn extract_repo_info(
+    repo_path: &Path,
+) -> Result<Option<DiscoveredRepo>, Box<dyn std::error::Error>> {
     // Get the remote URL
     let output = Command::new("git")
         .arg("-C")
@@ -69,9 +73,7 @@ fn extract_repo_info(repo_path: &Path) -> Result<Option<DiscoveredRepo>, Box<dyn
         .output();
 
     let remote_url = match output {
-        Ok(out) if out.status.success() => {
-            String::from_utf8(out.stdout)?.trim().to_string()
-        }
+        Ok(out) if out.status.success() => String::from_utf8(out.stdout)?.trim().to_string(),
         _ => {
             // No remote or error getting remote
             return Ok(None);
@@ -164,14 +166,19 @@ pub fn current_branch(project_path: &Path) -> Result<String, Box<dyn std::error:
 
     if !sha.status.success() {
         let stderr = String::from_utf8_lossy(&sha.stderr);
-        return Err(Box::from(format!("could not determine current branch: {}", stderr)));
+        return Err(Box::from(format!(
+            "could not determine current branch: {}",
+            stderr
+        )));
     }
 
     Ok(String::from_utf8(sha.stdout)?.trim().to_string())
 }
 
 /// List all worktrees for a git project
-pub fn list_worktrees(project_path: &Path) -> Result<Vec<WorktreeItem>, Box<dyn std::error::Error>> {
+pub fn list_worktrees(
+    project_path: &Path,
+) -> Result<Vec<WorktreeItem>, Box<dyn std::error::Error>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(project_path)
@@ -185,6 +192,39 @@ pub fn list_worktrees(project_path: &Path) -> Result<Vec<WorktreeItem>, Box<dyn 
 
     let stdout = String::from_utf8(output.stdout)?;
     Ok(parse_worktree_list(&stdout))
+}
+
+/// Stash all uncommitted changes in the given worktree, including untracked
+/// files but not ignored ones (`git stash push -u`). The stash entry lives in
+/// the repo's shared object database, so it is visible from every worktree.
+pub fn stash_all(worktree_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["stash", "push", "--include-untracked"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git stash push failed: {}", stderr)));
+    }
+    Ok(())
+}
+
+/// Pop the most recent stash entry into the given worktree. On failure or
+/// conflict git preserves the stash entry, so nothing is lost either way.
+pub fn stash_pop(worktree_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["stash", "pop"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git stash pop failed: {}", stderr)));
+    }
+    Ok(())
 }
 
 /// Check whether a worktree has uncommitted or untracked changes.
@@ -212,7 +252,9 @@ pub fn remove_worktree(
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(project_path).args(&["worktree", "remove"]);
+    cmd.arg("-C")
+        .arg(project_path)
+        .args(&["worktree", "remove"]);
     if force {
         cmd.arg("--force");
     }
@@ -242,7 +284,10 @@ pub fn create_worktree(
     let project_name = project_path
         .file_name()
         .ok_or("Could not determine project name")?;
-    let target_dir = org_path.join(".worktrees").join(project_name).join(worktree_name);
+    let target_dir = org_path
+        .join(".worktrees")
+        .join(project_name)
+        .join(worktree_name);
 
     let mut cmd = Command::new("git");
     cmd.arg("-C")
@@ -269,9 +314,7 @@ fn parse_git_remote(remote_url: &str) -> Result<(String, String), Box<dyn std::e
 
     let parsed = GitUrl::parse(remote_url)?;
 
-    let org = parsed
-        .owner
-        .ok_or("No organization found in remote URL")?;
+    let org = parsed.owner.ok_or("No organization found in remote URL")?;
 
     let name = parsed.name;
 
@@ -283,7 +326,11 @@ mod tests {
     use super::*;
 
     fn init_repo_with_commit(path: &Path) {
-        Command::new("git").arg("init").current_dir(path).output().unwrap();
+        Command::new("git")
+            .arg("init")
+            .current_dir(path)
+            .output()
+            .unwrap();
         Command::new("git")
             .args(&["config", "user.email", "test@example.com"])
             .current_dir(path)
@@ -295,7 +342,11 @@ mod tests {
             .output()
             .unwrap();
         std::fs::write(path.join("README"), "x").unwrap();
-        Command::new("git").args(&["add", "."]).current_dir(path).output().unwrap();
+        Command::new("git")
+            .args(&["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
         Command::new("git")
             .args(&["commit", "-m", "init"])
             .current_dir(path)
@@ -310,7 +361,11 @@ mod tests {
 
         let branch = current_branch(temp_dir.path()).unwrap();
         // Default branch may be `main` or `master` depending on git config
-        assert!(branch == "main" || branch == "master", "unexpected branch: {}", branch);
+        assert!(
+            branch == "main" || branch == "master",
+            "unexpected branch: {}",
+            branch
+        );
     }
 
     #[test]
@@ -325,6 +380,54 @@ mod tests {
 
         let branch = current_branch(temp_dir.path()).unwrap();
         assert_eq!(branch, "feature-x");
+    }
+
+    #[test]
+    fn test_stash_all_and_pop_restores_changes() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        std::fs::write(temp_dir.path().join("README"), "modified").unwrap();
+        std::fs::write(temp_dir.path().join("untracked.txt"), "new").unwrap();
+
+        stash_all(temp_dir.path()).unwrap();
+        // Both the tracked modification and the untracked file are stashed away
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.path().join("README")).unwrap(),
+            "x"
+        );
+        assert!(!temp_dir.path().join("untracked.txt").exists());
+        assert_eq!(is_worktree_dirty(temp_dir.path()).unwrap(), false);
+
+        stash_pop(temp_dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.path().join("README")).unwrap(),
+            "modified"
+        );
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.path().join("untracked.txt")).unwrap(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn test_stash_pop_conflict_preserves_stash() {
+        // Popping into a tree that touches the same file conflicts, but the
+        // stash entry survives so nothing is lost.
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        std::fs::write(temp_dir.path().join("README"), "stashed").unwrap();
+        stash_all(temp_dir.path()).unwrap();
+
+        std::fs::write(temp_dir.path().join("README"), "local").unwrap();
+        assert!(stash_pop(temp_dir.path()).is_err());
+
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(temp_dir.path())
+            .args(&["stash", "list"])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8(out.stdout).unwrap().contains("stash@{0}"));
     }
 
     #[test]
@@ -515,10 +618,7 @@ mod tests {
         let bare_path = temp_dir.path().join("bare-repo");
         std::fs::create_dir(&bare_path).unwrap();
 
-        let output = format!(
-            "worktree {}\nHEAD abc123\nbare\n\n",
-            bare_path.display()
-        );
+        let output = format!("worktree {}\nHEAD abc123\nbare\n\n", bare_path.display());
 
         let items = parse_worktree_list(&output);
         assert_eq!(items.len(), 1);
