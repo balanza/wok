@@ -121,7 +121,7 @@ implementation is done you test and review it; after approval we merge and
 only then start the next task. One feature per commit (conventional commits,
 scoped `feat(...)`), author `Emanuele De Cupis <emanuele@decup.is>`.
 
-- [ ] **Task 1 — `-T/--take` carry flag**
+- [x] **Task 1 — `-T/--take` carry flag**
   - `src/cli.rs`: `-T/--take` (requires `-w` with a value, conflicts with
     `--rm`, rejected with menu-only `-w`), `take: bool` on `GoWorktree`,
     `cli_test!` / `cli_test_error!` cases.
