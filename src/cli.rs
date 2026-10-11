@@ -51,6 +51,20 @@ pub enum InferredCommand {
         name: String,
         yes: bool,
     },
+    /// Review a GitHub pull request in a worktree (`wok --pr <number>`)
+    Pr {
+        project: Option<String>,
+        number: u32,
+        force: bool,
+    },
+    /// Review a GitHub pull request given by URL (`wok <pr-url>`); the
+    /// project is cloned into the workspace first when missing
+    PrUrl {
+        org: String,
+        repo: String,
+        number: u32,
+        force: bool,
+    },
 }
 
 /// CLI argument parser with inference logic
@@ -174,6 +188,46 @@ impl WokCli {
                     .requires("worktree"),
             )
             .arg(
+                Arg::new("pr")
+                    .long("pr")
+                    .help("Review a GitHub pull request in a worktree of the given (or current) project")
+                    .value_name("NUMBER")
+                    .num_args(1)
+                    .value_parser(clap::value_parser!(u32))
+                    .conflicts_with_all(&[
+                        "list",
+                        "fast-forward",
+                        "export",
+                        "import",
+                        "scrape",
+                        "setup",
+                        "clean",
+                        "rm",
+                        "manual",
+                        "worktree",
+                        "worktree-root",
+                    ]),
+            )
+            .arg(
+                Arg::new("force")
+                    .long("force")
+                    .help("Destructive: with --pr or a PR URL, hard-reset the PR worktree to the PR head")
+                    .action(ArgAction::SetTrue)
+                    .conflicts_with_all(&[
+                        "list",
+                        "fast-forward",
+                        "export",
+                        "import",
+                        "scrape",
+                        "setup",
+                        "clean",
+                        "rm",
+                        "manual",
+                        "worktree",
+                        "worktree-root",
+                    ]),
+            )
+            .arg(
                 Arg::new("take")
                     .short('T')
                     .long("take")
@@ -225,6 +279,16 @@ impl WokCli {
         matches: &ArgMatches,
         trailing: Vec<String>,
     ) -> Result<InferredCommand, String> {
+        // --force is only meaningful with a pull request: the --pr flag or a
+        // GitHub PR URL positional.
+        let force = matches.get_flag("force");
+        let pr_url = matches
+            .get_one::<String>("project")
+            .and_then(|p| Self::parse_pr_url(p));
+        if force && matches.get_one::<u32>("pr").is_none() && pr_url.is_none() {
+            return Err("--force requires a pull request (--pr <number> or a PR URL)".to_string());
+        }
+
         // Handle scrape command first (since it can combine with export/import)
         if let Some(scrape_path) = matches.get_one::<String>("scrape") {
             // Scrape cannot be combined with list, ff, or project
@@ -320,6 +384,16 @@ impl WokCli {
             });
         }
 
+        // Handle PR review via --pr flag (project from positional or cwd)
+        if let Some(number) = matches.get_one::<u32>("pr").copied() {
+            let project = matches.get_one::<String>("project").cloned();
+            return Ok(InferredCommand::Pr {
+                project,
+                number,
+                force,
+            });
+        }
+
         // Handle flag-based commands
         if matches.get_flag("list") {
             // List cannot be combined with export/import
@@ -405,6 +479,15 @@ impl WokCli {
 
         // Handle positional argument
         if let Some(positional) = matches.get_one::<String>("project") {
+            // A GitHub PR URL routes to the PR review flow, not Add
+            if let Some((org, repo, number)) = pr_url {
+                return Ok(InferredCommand::PrUrl {
+                    org,
+                    repo,
+                    number,
+                    force,
+                });
+            }
             if Self::is_url(positional) {
                 return Ok(InferredCommand::Add {
                     repo_url: positional.clone(),
@@ -435,6 +518,36 @@ impl WokCli {
         Ok(InferredCommand::Dashboard)
     }
 
+    /// Parse a GitHub pull request URL — `https://github.com/<org>/<repo>/pull/<n>`
+    /// — into (org, repo, number). Any PR page subpath (`/files`, `/commits`,
+    /// …), query string or fragment is ignored. Non-GitHub or non-PR URLs
+    /// return None (they stay on the regular Add path).
+    fn parse_pr_url(s: &str) -> Option<(String, String, u32)> {
+        let rest = s
+            .strip_prefix("https://")
+            .or_else(|| s.strip_prefix("http://"))?;
+        let rest = rest.split('#').next()?.split('?').next()?;
+
+        let mut parts = rest.split('/');
+        let host = parts.next()?;
+        if host != "github.com" {
+            return None;
+        }
+        let org = parts.next()?;
+        let repo = parts.next()?;
+        let marker = parts.next()?;
+        if marker != "pull" {
+            return None;
+        }
+        let number: u32 = parts.next()?.parse().ok()?;
+
+        if org.is_empty() || repo.is_empty() {
+            return None;
+        }
+        let repo = repo.strip_suffix(".git").unwrap_or(repo);
+        Some((org.to_string(), repo.to_string(), number))
+    }
+
     /// Check if a string looks like a URL
     fn is_url(s: &str) -> bool {
         // Check for common Git URL patterns
@@ -453,6 +566,42 @@ mod tests {
     fn test_url_detection() {
         assert!(WokCli::is_url("git@github.com:user/repo.git"));
         assert!(WokCli::is_url("https://github.com/user/repo"));
+    }
+
+    #[test]
+    fn test_parse_pr_url() {
+        let p = |s: &str| WokCli::parse_pr_url(s);
+        let want = |o: &str, r: &str, n: u32| (o.to_string(), r.to_string(), n);
+
+        // Canonical and subpath forms
+        assert_eq!(
+            p("https://github.com/org/repo/pull/123"),
+            Some(want("org", "repo", 123))
+        );
+        assert_eq!(
+            p("https://github.com/org/repo/pull/45/files"),
+            Some(want("org", "repo", 45))
+        );
+        assert_eq!(
+            p("https://github.com/org/repo/pull/7#issuecomment-1"),
+            Some(want("org", "repo", 7))
+        );
+        assert_eq!(
+            p("http://github.com/org/repo/pull/9"),
+            Some(want("org", "repo", 9))
+        );
+
+        // Non-PR URLs stay on the regular Add path
+        assert_eq!(p("https://github.com/org/repo"), None);
+        assert_eq!(p("https://github.com/org"), None);
+        assert_eq!(p("git@github.com:org/repo.git"), None);
+        assert_eq!(p("https://gitlab.com/org/repo/pull/123"), None);
+
+        // Malformed PR paths
+        assert_eq!(p("https://github.com/org/repo/pull"), None);
+        assert_eq!(p("https://github.com/org/repo/pull/abc"), None);
+        assert_eq!(p("https://github.com/org/repo/pulls/123"), None);
+        assert_eq!(p("https://github.com/org/repo/issues/123"), None);
     }
 
     macro_rules! cli_test {
@@ -746,6 +895,49 @@ mod tests {
                 yes: true,
             },
 
+        test_pr_flag:
+            vec!["wok", "--pr", "123"],
+            InferredCommand::Pr {
+                project: None,
+                number: 123,
+                force: false,
+            },
+
+        test_pr_flag_with_project:
+            vec!["wok", "my/project", "--pr", "5", "--force"],
+            InferredCommand::Pr {
+                project: Some("my/project".into()),
+                number: 5,
+                force: true,
+            },
+
+        test_pr_url:
+            vec!["wok", "https://github.com/org/repo/pull/123"],
+            InferredCommand::PrUrl {
+                org: "org".into(),
+                repo: "repo".into(),
+                number: 123,
+                force: false,
+            },
+
+        test_pr_url_subpath:
+            vec!["wok", "https://github.com/org/repo/pull/45/files"],
+            InferredCommand::PrUrl {
+                org: "org".into(),
+                repo: "repo".into(),
+                number: 45,
+                force: false,
+            },
+
+        test_pr_url_with_force:
+            vec!["wok", "https://github.com/org/repo/pull/7", "--force"],
+            InferredCommand::PrUrl {
+                org: "org".into(),
+                repo: "repo".into(),
+                number: 7,
+                force: true,
+            },
+
     }
 
     #[test]
@@ -868,5 +1060,23 @@ mod tests {
 
         test_take_without_worktree_value:
             vec!["wok", "my/project", "-w", "-T"]
+
+        test_pr_not_a_number:
+            vec!["wok", "--pr", "abc"]
+
+        test_pr_conflicts_list:
+            vec!["wok", "--pr", "1", "--list"]
+
+        test_pr_conflicts_worktree:
+            vec!["wok", "-w", "foo", "--pr", "1"]
+
+        test_pr_conflicts_rm:
+            vec!["wok", "--pr", "1", "--rm", "foo"]
+
+        test_force_without_pr:
+            vec!["wok", "--force"]
+
+        test_force_conflicts_list:
+            vec!["wok", "--force", "--list"]
     }
 }
