@@ -133,7 +133,7 @@ scoped `feat(...)`), author `Emanuele De Cupis <emanuele@decup.is>`.
     noting the stash survived.
   - `tests/worktree.rs`: tracked *and* untracked files move across worktrees;
     dirty-destination refusal.
-- [ ] **Task 2 — root↔worktree toggle**
+- [x] **Task 2 — root↔worktree toggle**
   - `templates/.wokrc.{bash,zsh}`: intercept `-w -`, `--worktree -`, bare
     `wok -` (cd to `__wok_last`, stderr error when unset); record
     `__wok_last=$PWD` before every cd (goto + menu selection).
