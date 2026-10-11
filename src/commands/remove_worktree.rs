@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use wok::lib::git::{is_worktree_dirty, list_worktrees, remove_worktree};
+use wok::lib::git::{delete_branch, is_worktree_dirty, list_worktrees, remove_worktree};
 
 use crate::commands::go_worktree::resolve_project_path;
 
@@ -34,6 +34,15 @@ pub fn handle(
     };
 
     remove_worktree(&project_path, &target.path, force)?;
+
+    // PR worktrees carry their own local branch (pr-<n>); clean it up too.
+    // Regular worktrees keep their branch, as before.
+    if let Some(num) = name.strip_prefix("pr-") {
+        if num.parse::<u32>().is_ok() {
+            delete_branch(&project_path, name)?;
+        }
+    }
+
     println!("Removed worktree '{}'.", name);
     Ok(())
 }

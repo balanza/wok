@@ -227,6 +227,105 @@ pub fn stash_pop(worktree_path: &Path) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// Fetch the head of GitHub pull request `number` from `origin`, updating
+/// FETCH_HEAD. Used to sync an existing PR worktree: it runs from *inside the
+/// worktree being synced* so FETCH_HEAD lands in that worktree's gitdir (the
+/// subsequent merge reads FETCH_HEAD from there, not from the project root).
+/// The `refs/pull/<n>/head` namespace lives on the base repository, so this
+/// works for fork PRs too.
+pub fn fetch_pr_head(worktree_path: &Path, number: u32) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["fetch", "origin", &format!("pull/{}/head", number)])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git fetch failed: {}", stderr)));
+    }
+    Ok(())
+}
+
+/// Fetch the PR head into a local branch (forced update, in case the PR was
+/// rewritten). Used when creating the PR worktree.
+pub fn fetch_pr_branch(
+    project_path: &Path,
+    number: u32,
+    branch: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(&[
+            "fetch",
+            "origin",
+            &format!("+pull/{}/head:refs/heads/{}", number, branch),
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git fetch failed: {}", stderr)));
+    }
+    Ok(())
+}
+
+/// Merge FETCH_HEAD into the given worktree. On conflict (or any failure)
+/// the merge is aborted and an error returned; the worktree is left as it
+/// was.
+pub fn merge_fetch_head(worktree_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["merge", "FETCH_HEAD"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Best-effort cleanup: undo the merge so the worktree is not left
+        // in a conflicted state.
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(worktree_path)
+            .args(&["merge", "--abort"])
+            .output();
+        return Err(Box::from(format!("git merge failed: {}", stderr)));
+    }
+    Ok(())
+}
+
+/// Hard-reset the worktree to the given revision. Destructive: used by the
+/// PR sync flow with `--force`, or after an explicit prompt.
+pub fn reset_hard(worktree_path: &Path, rev: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&["reset", "--hard", rev])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git reset failed: {}", stderr)));
+    }
+    Ok(())
+}
+
+/// Delete a local branch.
+pub fn delete_branch(project_path: &Path, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(&["branch", "-D", branch])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(Box::from(format!("git branch -D failed: {}", stderr)));
+    }
+    Ok(())
+}
+
 /// Check whether a worktree has uncommitted or untracked changes.
 /// Returns true if `git status --porcelain` produces any output.
 pub fn is_worktree_dirty(worktree_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
@@ -428,6 +527,40 @@ mod tests {
             .output()
             .unwrap();
         assert!(String::from_utf8(out.stdout).unwrap().contains("stash@{0}"));
+    }
+
+    #[test]
+    fn test_reset_hard_discards_changes() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        std::fs::write(temp_dir.path().join("README"), "modified").unwrap();
+
+        reset_hard(temp_dir.path(), "HEAD").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(temp_dir.path().join("README")).unwrap(),
+            "x"
+        );
+        assert_eq!(is_worktree_dirty(temp_dir.path()).unwrap(), false);
+    }
+
+    #[test]
+    fn test_delete_branch() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        init_repo_with_commit(temp_dir.path());
+        Command::new("git")
+            .args(&["branch", "spare"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        delete_branch(temp_dir.path(), "spare").unwrap();
+
+        let out = Command::new("git")
+            .args(&["branch", "--list", "spare"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), "");
     }
 
     #[test]

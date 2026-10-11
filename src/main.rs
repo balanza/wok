@@ -45,6 +45,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::InferredCommand::GoWorktreeRoot { project } => {
             commands::go_worktree_root::handle(&workspace, project.as_deref())
         }
+        cli::InferredCommand::Pr {
+            project,
+            number,
+            force,
+        } => commands::pr::handle(&workspace, project.as_deref(), number, force),
+        cli::InferredCommand::PrUrl {
+            org,
+            repo,
+            number,
+            force,
+        } => commands::pr::handle_url(&workspace, &org, &repo, number, force),
         cli::InferredCommand::RemoveWorktree { project, name, yes } => {
             commands::remove_worktree::handle(&workspace, project.as_deref(), &name, yes)
         }
