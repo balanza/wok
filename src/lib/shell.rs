@@ -493,6 +493,11 @@ mod tests {
         assert!(script.contains("/test/binary/path"));
         assert!(script.contains("TEST_GOTO::"));
         assert!(script.contains("TEST_MULTIPLE::"));
+        // Toggle support: __wok_last recording on every cd plus the
+        // `wok -` / `wok -w -` interception.
+        assert!(script.contains("_wok_cd"));
+        assert!(script.contains("__wok_last"));
+        assert!(script.contains("wok: no previous wok location to toggle back to"));
     }
 
     #[test]
@@ -507,6 +512,11 @@ mod tests {
         assert!(script.contains("/test/binary/path"));
         assert!(script.contains("TEST_GOTO::"));
         assert!(script.contains("TEST_MULTIPLE::"));
+        // Toggle support: __wok_last recording on every cd plus the
+        // `wok -` / `wok -w -` interception.
+        assert!(script.contains("_wok_cd"));
+        assert!(script.contains("__wok_last"));
+        assert!(script.contains("wok: no previous wok location to toggle back to"));
     }
 
     #[test]
