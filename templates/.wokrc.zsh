@@ -1,6 +1,50 @@
 #!/bin/zsh
 
+# cd that remembers the directory we leave in __wok_last, so the wrapper
+# can toggle back to it (`wok -` / `wok -w -`).
+_wok_cd() {
+  local prev="$PWD"
+  if cd "$1"; then
+    if [[ "$prev" != "$1" ]]; then
+      __wok_last="$prev"
+    fi
+    return 0
+  fi
+  return $?
+}
+
 wok() {
+  # Root<->worktree toggle: `wok -` (bare) or `wok -w -` / `wok --worktree -`
+  # jump to the last location wok moved us from, like `cd -`. Handled
+  # entirely in the wrapper: the binary never sees the toggle and stays
+  # stateless and pwd-independent.
+  local -a wok_args=("$@")
+  local wok_toggle=0
+  if [[ $# -eq 1 && "$1" == "-" ]]; then
+    wok_toggle=1
+  else
+    local i
+    for (( i=1; i<=$#; i++ )); do
+      if [[ "${wok_args[$i]}" == "-w" || "${wok_args[$i]}" == "--worktree" ]]; then
+        if (( i < $# )) && [[ "${wok_args[$((i+1))]}" == "-" ]]; then
+          wok_toggle=1
+          break
+        fi
+      fi
+    done
+  fi
+  if [[ $wok_toggle -eq 1 ]]; then
+    if [[ -n "${__wok_last:-}" && -d "${__wok_last}" ]]; then
+      local target="$__wok_last"
+      __wok_last="$PWD"
+      cd "$target" || return $?
+    else
+      echo "wok: no previous wok location to toggle back to" >&2
+      return 1
+    fi
+    return 0
+  fi
+
   local fd3=$(mktemp "${TMPDIR:-/tmp}/wok_fd3_$$.XXXXXX")
   local goto_dir
   local multiple_matches=0
@@ -100,9 +144,9 @@ wok() {
           echo ""  # Move to new line after selection
           local selected="${matches[$current_index]}"
           if [[ "$selected" == *"::"* ]]; then
-            cd "${selected#*::}" || return $?
+            _wok_cd "${selected#*::}" || return $?
           elif [[ "$selected" == /* ]]; then
-            cd "$selected" || return $?
+            _wok_cd "$selected" || return $?
           else
             wok "$selected"
           fi
@@ -118,7 +162,7 @@ wok() {
 
   # Handle goto
   if [[ -n "$goto_dir" ]]; then
-    cd "$goto_dir" || return $?
+    _wok_cd "$goto_dir" || return $?
   fi
 
   return 0
