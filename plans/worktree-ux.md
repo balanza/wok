@@ -138,7 +138,7 @@ scoped `feat(...)`), author `Emanuele De Cupis <emanuele@decup.is>`.
     `wok -` (cd to `__wok_last`, stderr error when unset); record
     `__wok_last=$PWD` before every cd (goto + menu selection).
   - `src/lib/shell.rs`: extend `compile_wokrc_script` assertions.
-- [ ] **Task 3 — PR review feature (`wok <pr-url>` / `wok --pr <n>`)**
+- [x] **Task 3 — PR review feature (`wok <pr-url>` / `wok --pr <n>`)**
   - `src/cli.rs`: `--pr <number>` flag (project from positional or cwd) and
     `--force`; URL inference — any GitHub PR page subpath
     (`github.com/<org>/<repo>/pull/<n>/...`) routes to the PR flow instead of
