@@ -56,9 +56,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             number,
             force,
         } => commands::pr::handle_url(&workspace, &org, &repo, number, force),
-        cli::InferredCommand::RemoveWorktree { project, name, yes } => {
-            commands::remove_worktree::handle(&workspace, project.as_deref(), &name, yes)
-        }
+        cli::InferredCommand::RemoveWorktree {
+            project,
+            target,
+            yes,
+        } => match target {
+            cli::RemoveTarget::Named(name) => {
+                commands::remove_worktree::handle(&workspace, project.as_deref(), &name, yes)
+            }
+            cli::RemoveTarget::Current => {
+                commands::remove_worktree::handle_current(&workspace, yes)
+            }
+        },
     };
 }
 

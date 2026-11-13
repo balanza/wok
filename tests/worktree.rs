@@ -889,3 +889,139 @@ fn test_remove_regular_worktree_keeps_branch() {
         .unwrap();
     assert!(String::from_utf8(out.stdout).unwrap().contains("feature-x"));
 }
+
+/// Run wok through `sh` with fd3 redirected to a file, like the shell
+/// wrapper does; returns (success, fd3 content).
+fn run_wok_with_fd3(workspace: &Path, cwd: &Path, args: &[&str], fd3: &Path) -> (bool, String) {
+    let bin = assert_cmd::cargo::cargo_bin("wok");
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(r#"bin="$1"; out="$2"; shift 2; "$bin" "$@" 3> "$out" < /dev/null"#)
+        .arg("sh")
+        .arg(&bin)
+        .arg(fd3)
+        .args(args)
+        .env("WOK_SPACE", workspace)
+        .current_dir(cwd)
+        .status()
+        .unwrap();
+    (
+        status.success(),
+        fs::read_to_string(fd3).unwrap_or_default(),
+    )
+}
+
+#[test]
+fn test_remove_current_worktree_and_goto_root() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    // Run from a subdirectory: still counts as "inside" the worktree
+    let sub = wt_path.child("sub/dir");
+    sub.create_dir_all().unwrap();
+
+    let fd3 = temp_dir.child("fd3.txt");
+    let (ok, fd3_content) =
+        run_wok_with_fd3(workspace.path(), sub.path(), &["-w", "--rm"], fd3.path());
+
+    assert!(ok);
+    assert!(!wt_path.exists());
+    let canonical_project = project.path().canonicalize().unwrap();
+    assert!(
+        fd3_content.contains(&format!(
+            "{}{}",
+            wok::lib::constants::GOTO_MARKER,
+            canonical_project.to_string_lossy()
+        )),
+        "expected goto to project root, got: {}",
+        fd3_content
+    );
+    // The branch stays, as for named removal
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(project.path())
+        .args(&["branch", "--list", "feature-x"])
+        .output()
+        .unwrap();
+    assert!(String::from_utf8(out.stdout).unwrap().contains("feature-x"));
+}
+
+#[test]
+fn test_remove_current_worktree_from_root_errors() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+
+    Command::cargo_bin("wok")
+        .unwrap()
+        .env("WOK_SPACE", workspace.path())
+        .current_dir(project.path())
+        .arg("-w")
+        .arg("--rm")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Not inside a worktree"));
+
+    assert!(project.path().exists());
+    assert!(wt_path.exists());
+}
+
+#[test]
+fn test_remove_current_dirty_worktree_declined_stays() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    fs::write(wt_path.path().join("untracked.txt"), "x").unwrap();
+
+    // stdin is /dev/null → empty answer → declined; no goto emitted
+    let fd3 = temp_dir.child("fd3.txt");
+    let (ok, fd3_content) = run_wok_with_fd3(
+        workspace.path(),
+        wt_path.path(),
+        &["-w", "--rm"],
+        fd3.path(),
+    );
+
+    assert!(ok);
+    assert!(wt_path.exists());
+    assert!(fd3_content.is_empty(), "unexpected goto: {}", fd3_content);
+}
+
+#[test]
+fn test_remove_current_dirty_worktree_with_yes() {
+    let temp_dir = assert_fs::TempDir::new().unwrap();
+    let workspace = temp_dir.child("workspace");
+    workspace.create_dir_all().unwrap();
+
+    let project = workspace.child("org/proj");
+    init_git_project(project.path());
+    let wt_path = workspace.child("org/.worktrees/proj/feature-x");
+    add_worktree(project.path(), "feature-x", wt_path.path());
+    fs::write(wt_path.path().join("untracked.txt"), "x").unwrap();
+
+    let fd3 = temp_dir.child("fd3.txt");
+    let (ok, _) = run_wok_with_fd3(
+        workspace.path(),
+        wt_path.path(),
+        &["-w", "--rm", "-y"],
+        fd3.path(),
+    );
+
+    assert!(ok);
+    assert!(!wt_path.exists());
+}
