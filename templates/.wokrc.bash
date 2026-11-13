@@ -44,8 +44,11 @@ wok() {
 	fi
 
 	local fd3=$(mktemp "${TMPDIR:-/tmp}/wok_fd3_$$.XXXXXX")
+	# Capture stdout only: stderr goes straight to the terminal so
+	# interactive prompts (e.g. "Remove anyway? [y/N]") are visible while
+	# the binary waits for an answer.
 	local output
-	output=$("__WOK_BINARY_PATH__" "$@" 3> "$fd3" 2>&1)
+	output=$("__WOK_BINARY_PATH__" "$@" 3> "$fd3")
 	local retcode=$?
 
 	# Check fd3 for markers

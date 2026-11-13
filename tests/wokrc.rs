@@ -48,7 +48,7 @@ impl WokrcFixture {
         fs::write(
             stub.path(),
             format!(
-                "#!/bin/sh\nprintf '{}{}' >&3\nprintf 'stub output\\n'\n",
+                "#!/bin/sh\nprintf '{}{}' >&3\nprintf 'stub output\\n'\nprintf 'stub prompt\\n' >&2\n",
                 GOTO_MARKER,
                 b.path().to_string_lossy()
             ),
@@ -100,6 +100,27 @@ echo SCENARIO_OK
             a = self.a().to_string_lossy(),
         );
         let path = self.path("toggle_scenario.sh");
+        fs::write(&path, script).unwrap();
+        path
+    }
+
+    /// Scenario: the binary's stderr (where interactive prompts go) must
+    /// reach the caller's stderr, not be folded into stdout.
+    fn write_stderr_scenario(&self, shell: &str) -> PathBuf {
+        let script = format!(
+            r#"source "{wokrc}"
+cd "{a}"
+wok proj > "{out}" 2> "{err}"
+grep -q "stub prompt" "{err}" || {{ echo FAIL_stderr_missing; exit 1; }}
+grep -q "stub prompt" "{out}" && {{ echo FAIL_stderr_in_stdout; exit 1; }}
+echo STDERR_OK
+"#,
+            wokrc = self.wokrc(shell).to_string_lossy(),
+            a = self.a().to_string_lossy(),
+            out = self.path("stdout.txt").to_string_lossy(),
+            err = self.err_file().to_string_lossy(),
+        );
+        let path = self.path("stderr_scenario.sh");
         fs::write(&path, script).unwrap();
         path
     }
@@ -198,4 +219,34 @@ fn test_wokrc_toggle_bash() {
 #[test]
 fn test_wokrc_toggle_zsh() {
     run_toggle_scenario("zsh");
+}
+
+fn run_stderr_scenario(shell: &str) {
+    if !shell_is_available(shell) {
+        eprintln!("skipping: {} is not available", shell);
+        return;
+    }
+    let fixture = WokrcFixture::new(shell);
+    let out = Command::new(shell)
+        .arg(fixture.write_stderr_scenario(shell))
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("STDERR_OK"),
+        "{} stderr scenario failed\nstdout: {}\nstderr: {}",
+        shell,
+        stdout,
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn test_wokrc_keeps_stderr_separate_bash() {
+    run_stderr_scenario("bash");
+}
+
+#[test]
+fn test_wokrc_keeps_stderr_separate_zsh() {
+    run_stderr_scenario("zsh");
 }
