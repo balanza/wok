@@ -32,7 +32,7 @@ wok -l
 wok -l --org acme,ymca
 
 # remove one project
-wok --rm acme/foo
+wok acme/foo --rm   # or: wok --rm acme/foo
 
 # fast-forward all main branches for all repos
 wok --ff 

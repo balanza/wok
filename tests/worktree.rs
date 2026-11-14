@@ -199,7 +199,7 @@ fn test_remove_clean_worktree() {
 
 #[test]
 fn test_remove_worktree_via_rm_value() {
-    // Same removal but with the name on --rm and -w bare
+    // Same removal but with --rm before -w
     let temp_dir = assert_fs::TempDir::new().unwrap();
     let workspace = temp_dir.child("workspace");
     workspace.create_dir_all().unwrap();
@@ -213,10 +213,10 @@ fn test_remove_worktree_via_rm_value() {
     Command::cargo_bin("wok")
         .unwrap()
         .env("WOK_SPACE", workspace.path())
-        .arg("org/proj")
         .arg("--rm")
-        .arg("feature-x")
+        .arg("org/proj")
         .arg("-w")
+        .arg("feature-x")
         .assert()
         .success();
 

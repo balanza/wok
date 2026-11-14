@@ -70,7 +70,7 @@ pub enum InferredCommand {
 /// Which worktree(s) `wok -w --rm` removes
 #[derive(Debug, Clone, PartialEq)]
 pub enum RemoveTarget {
-    /// `wok -w <name> --rm` / `wok -w --rm <name>`
+    /// `wok -w <name> --rm`
     Named(String),
     /// `wok -w --rm`: the worktree containing the current directory
     Current,
@@ -150,10 +150,8 @@ impl WokCli {
             .arg(
                 Arg::new("rm")
                     .long("rm")
-                    .help("Remove a project, or a worktree when combined with -w (the current one if no name is given)")
-                    .value_name("NAME")
-                    .num_args(0..=1)
-                    .default_missing_value("")
+                    .help("Remove the project given as argument, or a worktree when combined with -w (the current one if no name is given)")
+                    .action(ArgAction::SetTrue)
                     .conflicts_with_all(&["setup", "clean", "list", "fast-forward", "export", "import", "scrape"]),
             )
             .arg(
@@ -347,17 +345,11 @@ impl WokCli {
             let yes = matches.get_flag("yes");
             let take = matches.get_flag("take");
 
-            // Combined with --rm → remove a worktree. The name comes from
-            // whichever of -w / --rm carries the value (clap order-independent);
-            // with no name at all, the current worktree is removed.
-            if matches.contains_id("rm") {
-                let w_val = worktree_val.as_deref().unwrap_or("");
-                let rm_val = matches
-                    .get_one::<String>("rm")
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-                let target = match (w_val.is_empty(), rm_val.is_empty()) {
-                    (true, true) => {
+            // Combined with --rm → remove a worktree: the one named by -w, or
+            // the current one when -w has no value.
+            if matches.get_flag("rm") {
+                let target = match worktree_val.as_deref() {
+                    Some("") | None => {
                         // "Current" is defined by the cwd, so a project
                         // argument would be ambiguous at best
                         if project.is_some() {
@@ -368,14 +360,7 @@ impl WokCli {
                         }
                         RemoveTarget::Current
                     }
-                    (false, true) => RemoveTarget::Named(w_val.to_string()),
-                    (true, false) => RemoveTarget::Named(rm_val.to_string()),
-                    (false, false) => {
-                        return Err(
-                            "Specify the worktree name only once (via -w or --rm, not both)"
-                                .to_string(),
-                        )
-                    }
+                    Some(name) => RemoveTarget::Named(name.to_string()),
                 };
                 return Ok(InferredCommand::RemoveWorktree {
                     project,
@@ -473,27 +458,19 @@ impl WokCli {
             });
         }
 
-        // Check if remove options are provided (legacy --rm <project>; the
-        // -w + --rm combination is handled in the worktree block above).
-        // Checked before the positional branch so `wok myproj --rm` is rejected
-        // instead of silently routed to Go("myproj").
-        if matches.contains_id("rm") {
-            let rm_val = matches
-                .get_one::<String>("rm")
-                .map(|s| s.as_str())
-                .unwrap_or("");
-            if rm_val.is_empty() {
-                return Err(
-                    "--rm requires a project name (or combine with -w to remove a worktree)"
+        // --rm is a modifier: on its own it removes the project given as the
+        // positional argument (`wok <project> --rm` or `wok --rm <project>`).
+        // Checked before the positional branch so it isn't routed to Go.
+        if matches.get_flag("rm") {
+            return match matches.get_one::<String>("project") {
+                Some(search) => Ok(InferredCommand::Remove {
+                    search: search.clone(),
+                }),
+                None => Err(
+                    "--rm requires a project (wok <project> --rm) or -w to remove a worktree"
                         .to_string(),
-                );
-            }
-            if matches.contains_id("project") {
-                return Err("Cannot use --rm with a positional project argument".to_string());
-            }
-            return Ok(InferredCommand::Remove {
-                search: rm_val.to_string(),
-            });
+                ),
+            };
         }
 
         // Handle positional argument
@@ -890,10 +867,24 @@ mod tests {
                 yes: false,
             },
 
-        test_remove_worktree_via_rm_value:
-            vec!["wok", "--rm", "feature-x", "-w"],
+        test_remove_trailing_flag:
+            vec!["wok", "myproject", "--rm"],
+            InferredCommand::Remove {
+                search: "myproject".into(),
+            },
+
+        test_remove_worktree_rm_first:
+            vec!["wok", "--rm", "-w", "feature-x"],
             InferredCommand::RemoveWorktree {
                 project: None,
+                target: RemoveTarget::Named("feature-x".into()),
+                yes: false,
+            },
+
+        test_remove_worktree_project_after_rm:
+            vec!["wok", "-w", "feature-x", "--rm", "my/project"],
+            InferredCommand::RemoveWorktree {
+                project: Some("my/project".into()),
                 target: RemoveTarget::Named("feature-x".into()),
                 yes: false,
             },
@@ -1069,9 +1060,6 @@ mod tests {
         test_remove_current_worktree_with_project:
             vec!["wok", "my/project", "-w", "--rm"]
 
-        test_remove_worktree_double_name:
-            vec!["wok", "-w", "foo", "--rm", "bar"]
-
         test_rm_alone_with_positional_errors:
             vec!["wok", "myproj", "--rm", "other"]
 
@@ -1106,7 +1094,7 @@ mod tests {
             vec!["wok", "-w", "foo", "--pr", "1"]
 
         test_pr_conflicts_rm:
-            vec!["wok", "--pr", "1", "--rm", "foo"]
+            vec!["wok", "foo", "--pr", "1", "--rm"]
 
         test_force_without_pr:
             vec!["wok", "--force"]
