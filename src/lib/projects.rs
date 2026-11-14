@@ -23,6 +23,16 @@ pub fn list_project_items(
     workspace: &str,
     filter_orgs: Vec<String>,
 ) -> Result<Vec<ProjectItem>, Box<dyn std::error::Error>> {
+    list_project_items_with(workspace, filter_orgs, true)
+}
+
+// Like `list_project_items`, but `fetch_remote = false` skips the per-repo
+// `git remote get-url origin` subprocess and leaves `remote` as `None`.
+pub fn list_project_items_with(
+    workspace: &str,
+    filter_orgs: Vec<String>,
+    fetch_remote: bool,
+) -> Result<Vec<ProjectItem>, Box<dyn std::error::Error>> {
     let projects = list_projects(workspace, filter_orgs)?;
     let mut project_items = vec![None::<ProjectItem>; projects.len()];
 
@@ -35,7 +45,7 @@ pub fn list_project_items(
             remaining = rest;
 
             scope.spawn(move || {
-                let item = get_project_item(workspace, &org, &project);
+                let item = get_project_item(workspace, &org, &project, fetch_remote);
                 match item {
                     Ok(item) => *item_slot = item,
                     Err(e) => eprintln!("Error getting project item for {}: {}", project, e),
@@ -94,6 +104,7 @@ fn get_project_item(
     workspace: &str,
     org: &str,
     project: &str,
+    fetch_remote: bool,
 ) -> Result<Option<ProjectItem>, Box<dyn std::error::Error>> {
     let project_path = format!("{}/{}/{}", workspace, org, project);
     let git_path = format!("{}/.git", project_path);
@@ -101,15 +112,19 @@ fn get_project_item(
         return Ok(None);
     }
 
-    let remote = std::process::Command::new("git")
-        .arg("remote")
-        .arg("get-url")
-        .arg("origin")
-        .current_dir(&project_path)
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .map(Some)
-        .unwrap_or_else(|_| None);
+    let remote = if fetch_remote {
+        std::process::Command::new("git")
+            .arg("remote")
+            .arg("get-url")
+            .arg("origin")
+            .current_dir(&project_path)
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .map(Some)
+            .unwrap_or_else(|_| None)
+    } else {
+        None
+    };
 
     // check if the current directory is same os a sub directory of the project path
     let is_current = std::env::current_dir()
@@ -233,7 +248,7 @@ mod tests {
         let workspace = temp_dir.path().to_str().unwrap();
 
         // Test getting a valid git project
-        let item = get_project_item(workspace, "org1", "project1").unwrap();
+        let item = get_project_item(workspace, "org1", "project1", true).unwrap();
         assert!(item.is_some());
 
         let item = item.unwrap();
@@ -247,11 +262,11 @@ mod tests {
         assert!(!item.is_current); // Not in the current directory
 
         // Test getting a non-git directory
-        let item = get_project_item(workspace, "org2", "not-a-repo").unwrap();
+        let item = get_project_item(workspace, "org2", "not-a-repo", true).unwrap();
         assert!(item.is_none());
 
         // Test getting a non-existent project
-        let result = get_project_item(workspace, "org1", "nonexistent");
+        let result = get_project_item(workspace, "org1", "nonexistent", true);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
@@ -266,13 +281,24 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&project_path).unwrap();
 
-        let item = get_project_item(workspace, "org1", "project1")
+        let item = get_project_item(workspace, "org1", "project1", true)
             .unwrap()
             .unwrap();
         assert!(item.is_current);
 
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_project_items_without_remote() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+
+        let items = list_project_items_with(workspace, vec![], false).unwrap();
+
+        assert_eq!(items.len(), 3);
+        assert!(items.iter().all(|i| i.remote.is_none()));
     }
 
     #[test]
