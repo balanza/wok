@@ -108,7 +108,7 @@ fn get_project_item(
 ) -> Result<Option<ProjectItem>, Box<dyn std::error::Error>> {
     let project_path = format!("{}/{}/{}", workspace, org, project);
     let git_path = format!("{}/.git", project_path);
-    if !std::path::Path::new(&git_path).exists() {
+    if !std::path::Path::new(&git_path).exists() || is_linked_worktree(&project_path) {
         return Ok(None);
     }
 
@@ -142,6 +142,20 @@ fn get_project_item(
         remote,
         is_current,
     }))
+}
+
+// A linked worktree has a `.git` file pointing at `<main>/.git/worktrees/<name>`,
+// which contains a `commondir` file. Separate-git-dir clones and submodules
+// also have a `.git` file, but no `commondir`, so they are still listed.
+fn is_linked_worktree(project_path: &str) -> bool {
+    let project = std::path::Path::new(project_path);
+    let Ok(content) = std::fs::read_to_string(project.join(".git")) else {
+        return false; // .git is a directory (or unreadable): a normal repo
+    };
+    content
+        .strip_prefix("gitdir:")
+        .map(|dir| project.join(dir.trim()).join("commondir").exists())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -288,6 +302,52 @@ mod tests {
 
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_get_project_item_skips_linked_worktree() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+        let project1 = temp_dir.path().join("org1/project1");
+
+        let git = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(&project1)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {:?} failed", args);
+        };
+        git(&["commit", "--allow-empty", "-m", "init"]);
+        git(&["worktree", "add", "-b", "wt", "../project1-wt"]);
+
+        let item = get_project_item(workspace, "org1", "project1-wt", false).unwrap();
+        assert!(item.is_none());
+
+        let item = get_project_item(workspace, "org1", "project1", false).unwrap();
+        assert!(item.is_some());
+    }
+
+    #[test]
+    fn test_get_project_item_keeps_separate_git_dir() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+
+        // `.git` file pointing at a git dir without `commondir`, as written by
+        // `git clone --separate-git-dir`
+        let git_dir = temp_dir.path().join("external.git");
+        fs::create_dir(&git_dir).unwrap();
+        let project = temp_dir.path().join("org1/separate");
+        fs::create_dir(&project).unwrap();
+        fs::write(
+            project.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )
+        .unwrap();
+
+        let item = get_project_item(workspace, "org1", "separate", false).unwrap();
+        assert!(item.is_some());
     }
 
     #[test]
