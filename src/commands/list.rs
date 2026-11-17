@@ -1,6 +1,6 @@
 use std::io::{self};
 use wok::lib::list_writer::get_writer_fn;
-use wok::lib::projects::{list_project_items, ProjectItem};
+use wok::lib::projects::{list_project_items_with, ProjectItem};
 
 pub fn handle(
     workspace: &str,
@@ -8,7 +8,8 @@ pub fn handle(
     format: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let filter_orgs = orgs.clone().unwrap_or_else(Vec::new);
-    let list: Vec<ProjectItem> = list_project_items(workspace, filter_orgs)?;
+    // the flat format never prints the remote, so skip the per-repo git call
+    let list: Vec<ProjectItem> = list_project_items_with(workspace, filter_orgs, format != "flat")?;
 
     let writer = get_writer_fn(format)?;
     writer(list, &mut io::stdout())?;
@@ -23,6 +24,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
+    use wok::lib::projects::list_project_items;
 
     // Helper function to create a test workspace with projects
     fn setup_test_workspace() -> TempDir {

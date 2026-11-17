@@ -23,6 +23,16 @@ pub fn list_project_items(
     workspace: &str,
     filter_orgs: Vec<String>,
 ) -> Result<Vec<ProjectItem>, Box<dyn std::error::Error>> {
+    list_project_items_with(workspace, filter_orgs, true)
+}
+
+// Like `list_project_items`, but `fetch_remote = false` skips the per-repo
+// `git remote get-url origin` subprocess and leaves `remote` as `None`.
+pub fn list_project_items_with(
+    workspace: &str,
+    filter_orgs: Vec<String>,
+    fetch_remote: bool,
+) -> Result<Vec<ProjectItem>, Box<dyn std::error::Error>> {
     let projects = list_projects(workspace, filter_orgs)?;
     let mut project_items = vec![None::<ProjectItem>; projects.len()];
 
@@ -35,7 +45,7 @@ pub fn list_project_items(
             remaining = rest;
 
             scope.spawn(move || {
-                let item = get_project_item(workspace, &org, &project);
+                let item = get_project_item(workspace, &org, &project, fetch_remote);
                 match item {
                     Ok(item) => *item_slot = item,
                     Err(e) => eprintln!("Error getting project item for {}: {}", project, e),
@@ -94,22 +104,27 @@ fn get_project_item(
     workspace: &str,
     org: &str,
     project: &str,
+    fetch_remote: bool,
 ) -> Result<Option<ProjectItem>, Box<dyn std::error::Error>> {
     let project_path = format!("{}/{}/{}", workspace, org, project);
     let git_path = format!("{}/.git", project_path);
-    if !std::path::Path::new(&git_path).exists() {
+    if !std::path::Path::new(&git_path).exists() || is_linked_worktree(&project_path) {
         return Ok(None);
     }
 
-    let remote = std::process::Command::new("git")
-        .arg("remote")
-        .arg("get-url")
-        .arg("origin")
-        .current_dir(&project_path)
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .map(Some)
-        .unwrap_or_else(|_| None);
+    let remote = if fetch_remote {
+        std::process::Command::new("git")
+            .arg("remote")
+            .arg("get-url")
+            .arg("origin")
+            .current_dir(&project_path)
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .map(Some)
+            .unwrap_or_else(|_| None)
+    } else {
+        None
+    };
 
     // check if the current directory is same os a sub directory of the project path
     let is_current = std::env::current_dir()
@@ -127,6 +142,20 @@ fn get_project_item(
         remote,
         is_current,
     }))
+}
+
+// A linked worktree has a `.git` file pointing at `<main>/.git/worktrees/<name>`,
+// which contains a `commondir` file. Separate-git-dir clones and submodules
+// also have a `.git` file, but no `commondir`, so they are still listed.
+fn is_linked_worktree(project_path: &str) -> bool {
+    let project = std::path::Path::new(project_path);
+    let Ok(content) = std::fs::read_to_string(project.join(".git")) else {
+        return false; // .git is a directory (or unreadable): a normal repo
+    };
+    content
+        .strip_prefix("gitdir:")
+        .map(|dir| project.join(dir.trim()).join("commondir").exists())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -233,7 +262,7 @@ mod tests {
         let workspace = temp_dir.path().to_str().unwrap();
 
         // Test getting a valid git project
-        let item = get_project_item(workspace, "org1", "project1").unwrap();
+        let item = get_project_item(workspace, "org1", "project1", true).unwrap();
         assert!(item.is_some());
 
         let item = item.unwrap();
@@ -247,11 +276,11 @@ mod tests {
         assert!(!item.is_current); // Not in the current directory
 
         // Test getting a non-git directory
-        let item = get_project_item(workspace, "org2", "not-a-repo").unwrap();
+        let item = get_project_item(workspace, "org2", "not-a-repo", true).unwrap();
         assert!(item.is_none());
 
         // Test getting a non-existent project
-        let result = get_project_item(workspace, "org1", "nonexistent");
+        let result = get_project_item(workspace, "org1", "nonexistent", true);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
@@ -266,13 +295,70 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&project_path).unwrap();
 
-        let item = get_project_item(workspace, "org1", "project1")
+        let item = get_project_item(workspace, "org1", "project1", true)
             .unwrap()
             .unwrap();
         assert!(item.is_current);
 
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_get_project_item_skips_linked_worktree() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+        let project1 = temp_dir.path().join("org1/project1");
+
+        let git = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(&project1)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {:?} failed", args);
+        };
+        git(&["commit", "--allow-empty", "-m", "init"]);
+        git(&["worktree", "add", "-b", "wt", "../project1-wt"]);
+
+        let item = get_project_item(workspace, "org1", "project1-wt", false).unwrap();
+        assert!(item.is_none());
+
+        let item = get_project_item(workspace, "org1", "project1", false).unwrap();
+        assert!(item.is_some());
+    }
+
+    #[test]
+    fn test_get_project_item_keeps_separate_git_dir() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+
+        // `.git` file pointing at a git dir without `commondir`, as written by
+        // `git clone --separate-git-dir`
+        let git_dir = temp_dir.path().join("external.git");
+        fs::create_dir(&git_dir).unwrap();
+        let project = temp_dir.path().join("org1/separate");
+        fs::create_dir(&project).unwrap();
+        fs::write(
+            project.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )
+        .unwrap();
+
+        let item = get_project_item(workspace, "org1", "separate", false).unwrap();
+        assert!(item.is_some());
+    }
+
+    #[test]
+    fn test_list_project_items_without_remote() {
+        let temp_dir = setup_test_workspace();
+        let workspace = temp_dir.path().to_str().unwrap();
+
+        let items = list_project_items_with(workspace, vec![], false).unwrap();
+
+        assert_eq!(items.len(), 3);
+        assert!(items.iter().all(|i| i.remote.is_none()));
     }
 
     #[test]
